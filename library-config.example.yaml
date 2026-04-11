@@ -1,0 +1,61 @@
+# The Library — Configuration
+# Created by `library:config`. Edit manually or via `library_config_set`.
+
+library:
+  version: "1.0"
+
+# The Reading Room — your project's working area
+# Can be a separate repo or a directory within your project
+reading_room:
+  path: "../my-reading-room"             # path to Reading Room (repo or directory)
+  type: "repo"                           # repo | directory
+  specs: "docs/specs"                    # relative to reading_room.path
+  plans: "docs/plans"                    # where implementation plans live
+  checkpoints: "docs/checkpoints"        # where session checkpoints are written
+
+# Where your canonical spec files live (resolved from reading_room)
+specs:
+  path: "./docs/specs"                   # directory path, or omit if no specs
+  index: "INDEX.md"                      # optional entry point file
+  format: "markdown"                     # markdown (only option for now)
+
+# Knowledge base (Obsidian-native, Karpathy 3-layer pattern)
+vault:
+  path: "./knowledge-base"              # where the vault lives (or will be created)
+  schema_version: "karpathy-v1"         # vault structure pattern
+  compile_protocol: "CLAUDE.md"         # compile instructions in vault root
+  compile_order: "kb.yaml"              # compile order definition in vault root
+  obsidian:
+    wikilinks: true                     # wiki/ articles use [[wikilinks]] and #tags
+    excluded_folders:                   # folders excluded from Obsidian search
+      - "sources/raw"                   # raw source material — noisy in search
+
+# Project management integration
+pm:
+  provider: "none"                      # jira | linear | none
+  projects: []                          # list of {key, name} objects
+  # Example:
+  # projects:
+  #   - key: "PROJ"
+  #     name: "My Project"
+
+# Graphify — cross-document relationship queries (optional)
+graphify:
+  enabled: false                        # set true after: pip install the-library[graphify]
+  graph_path: "./graphify-out/graph.json"
+  source_path: "./raw"                  # what Graphify indexes (relative to vault)
+  mode: "deep"                          # deep | shallow
+  mcp_port: 3001                        # Graphify MCP server port
+  auto_rebuild: true                    # rebuild graph on ingest/compile
+
+# Claude memory lifecycle management
+memory:
+  path: "./.library/memory"             # where memory files are stored
+  index: "MEMORY.md"                    # index filename
+  max_index_lines: 200                  # truncate index after this many lines
+  stale_threshold_days: 30              # flag memories older than this
+
+# Session checkpoints
+checkpoints:
+  path: "docs/checkpoints"             # resolved from reading_room path
+  format: "YYYY-MM-DD-HH-MM-SS-<topic>-checkpoint.md"
