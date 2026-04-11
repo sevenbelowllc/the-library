@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/the-library-banner.jpeg" alt="The Library" width="600">
+</p>
+
 # The Library
 
 Open-source meta-system for AI-assisted project management. Session continuity, knowledge management, and PM tracking through a Claude Code skill suite backed by an MCP server.
