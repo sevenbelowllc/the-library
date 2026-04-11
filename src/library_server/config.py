@@ -1,0 +1,90 @@
+"""Configuration loading and validation."""
+
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+CONFIG_FILENAME = "library-config.yaml"
+
+
+@dataclass
+class LibraryConfig:
+    """Parsed library configuration."""
+
+    raw: dict[str, Any] = field(default_factory=dict)
+    path: Path = field(default_factory=lambda: Path.cwd() / CONFIG_FILENAME)
+
+    def get_section(self, section: str) -> dict:
+        return self.raw.get(section, {})
+
+    def set_value(self, section: str, key: str, value: Any) -> None:
+        if section not in self.raw:
+            self.raw[section] = {}
+        self.raw[section][key] = value
+
+    def to_dict(self) -> dict:
+        return dict(self.raw)
+
+    def save(self) -> None:
+        with open(self.path, "w") as f:
+            yaml.dump(self.raw, f, default_flow_style=False, sort_keys=False)
+
+
+def load_config(config_path: Path | None = None) -> LibraryConfig:
+    """Load config from yaml file. Returns empty config if file doesn't exist."""
+    path = config_path or Path.cwd() / CONFIG_FILENAME
+    if path.exists():
+        with open(path) as f:
+            raw = yaml.safe_load(f) or {}
+    else:
+        raw = {}
+    return LibraryConfig(raw=raw, path=path)
+
+
+def validate_config(config: LibraryConfig) -> dict:
+    """Validate a loaded config for completeness and dependency availability.
+
+    Returns:
+        {"valid": bool, "warnings": [str, ...]}
+    """
+    warnings: list[str] = []
+
+    # Check required sections
+    library = config.get_section("library")
+    if not library.get("version"):
+        warnings.append("Missing library.version — config may be malformed")
+
+    # Check vault path exists if configured
+    vault = config.get_section("vault")
+    vault_path = vault.get("path")
+    if vault_path and not Path(vault_path).exists():
+        warnings.append(f"Vault path does not exist: {vault_path}")
+
+    # Check Graphify availability if enabled
+    graphify = config.get_section("graphify")
+    if graphify.get("enabled"):
+        if not shutil.which("graphify"):
+            warnings.append(
+                "Graphify is enabled but CLI not found. "
+                "Install with: pip install the-library[graphify]"
+            )
+
+    # Check PM provider validity
+    pm = config.get_section("pm")
+    provider = pm.get("provider", "none")
+    if provider not in ("jira", "linear", "none"):
+        warnings.append(f"Unknown PM provider: {provider}. Use 'jira', 'linear', or 'none'.")
+
+    # Check memory path
+    memory = config.get_section("memory")
+    memory_path = memory.get("path")
+    if memory_path and not Path(memory_path).exists():
+        warnings.append(f"Memory path does not exist: {memory_path} (will be created on first use)")
+
+    return {"valid": len(warnings) == 0, "warnings": warnings}
