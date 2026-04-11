@@ -47,6 +47,21 @@ def test_init_vault_creates_kb_yaml(tmp_path: Path):
     assert kb_yaml.exists()
 
 
+def test_init_vault_creates_obsidian_settings(tmp_path: Path):
+    """init_vault should create .obsidian/app.json with wikilinks and excluded folders."""
+    import json
+
+    vault_path = tmp_path / "test-vault"
+    init_vault(str(vault_path))
+
+    app_json = vault_path / ".obsidian" / "app.json"
+    assert app_json.exists()
+
+    settings = json.loads(app_json.read_text())
+    assert settings["useMarkdownLinks"] is False  # wikilinks enabled
+    assert "sources/raw" in settings["userIgnoreFilters"]
+
+
 def test_init_vault_idempotent(tmp_path: Path):
     """init_vault on existing vault should not destroy content."""
     vault_path = tmp_path / "test-vault"
