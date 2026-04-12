@@ -29,7 +29,11 @@ htmlcov/
 .coverage
 coverage.xml
 
-# Library runtime
+# Claude Code
+.claude/
+
+# Library runtime (user-specific, never commit)
 library-config.yaml
+vault/
 graphify-out/
 .library/
