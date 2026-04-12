@@ -1,0 +1,24 @@
+{
+  "name": "the-library",
+  "version": "0.3.0",
+  "description": "Meta-system for AI-assisted project management. Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
+  "author": {
+    "name": "SevenBelow LLC",
+    "email": "dev@sevenbelow.io"
+  },
+  "homepage": "https://github.com/sevenbelowllc/the-library",
+  "repository": "https://github.com/sevenbelowllc/the-library",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "knowledge-management",
+    "project-management",
+    "session-continuity",
+    "vault-builder",
+    "jira",
+    "linear",
+    "obsidian",
+    "graphify"
+  ],
+  "mcpServers": "./.mcp.json"
+}
