@@ -51,7 +51,7 @@ Do NOT rely on:
 **FAILED** — Critical criteria fail. List failures with evidence.
 
 ### Step 5: Update Records
-- Call `library_pm_update` with verdict and evidence
+- Call `library:pm:update` with verdict and evidence
 - If VERIFIED: transition task to done
 - If PARTIAL/FAILED: add comment with findings, keep task open
 - Update vault wiki article if it had a `[VERIFY]` tag for this item
@@ -66,6 +66,6 @@ If you haven't run the verification command in THIS session, you cannot claim it
 
 ## MCP Tools Used
 
-- `library_pm_update` — update task with verdict
-- `library_vault_parse` — check for related [VERIFY] tags
-- `library_config_get` — project settings
+- `library:pm:update` — update task with verdict
+- `library:vault:parse` — check for related [VERIFY] tags
+- `library:config:get` — project settings

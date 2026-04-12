@@ -21,20 +21,20 @@ Analyze the question and route:
 
 | Question Type | Data Source | MCP Tool |
 |--------------|------------|----------|
-| Vault content (tags, articles, sources) | Vault parser | `library_vault_parse` |
-| Relationships ("depends on", "connects to") | Graphify | `library_graph_query` |
-| Path tracing ("how does A relate to B") | Graphify | `library_graph_path` |
-| Task state ("blocked", "overdue", "open") | PM adapter | `library_pm_query` |
-| Status report | PM adapter (all projects) | `library_pm_sync` |
-| Session state | Checkpoint | `library_checkpoint_read` |
+| Vault content (tags, articles, sources) | Vault parser | `library:vault:parse` |
+| Relationships ("depends on", "connects to") | Graphify | `library:graph:query` |
+| Path tracing ("how does A relate to B") | Graphify | `library:graph:path` |
+| Task state ("blocked", "overdue", "open") | PM adapter | `library:pm:query` |
+| Status report | PM adapter (all projects) | `library:pm:sync` |
+| Session state | Checkpoint | `library:checkpoint:read` |
 
 ## Report Mode (--report)
 
 Generate a formatted status summary:
 
-1. Call `library_pm_sync` for each configured project
-2. Call `library_vault_parse` for tag counts
-3. Call `library_memory_scan` for memory health
+1. Call `library:pm:sync` for each configured project
+2. Call `library:vault:parse` for tag counts
+3. Call `library:memory:scan` for memory health
 4. Format as:
 
 ```
@@ -64,11 +64,11 @@ Generate a formatted status summary:
 
 ## MCP Tools Used
 
-- `library_vault_parse` — vault content queries
-- `library_graph_query` — relationship queries
-- `library_graph_path` — path tracing
-- `library_pm_query` — task state
-- `library_pm_sync` — project state (for report)
-- `library_memory_scan` — memory health
-- `library_checkpoint_read` — session state
-- `library_config_get` — check what's enabled
+- `library:vault:parse` — vault content queries
+- `library:graph:query` — relationship queries
+- `library:graph:path` — path tracing
+- `library:pm:query` — task state
+- `library:pm:sync` — project state (for report)
+- `library:memory:scan` — memory health
+- `library:checkpoint:read` — session state
+- `library:config:get` — check what's enabled

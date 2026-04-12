@@ -1,6 +1,6 @@
 {
-  "library-server": {
-    "command": "library-server",
+  "library": {
+    "command": "library",
     "env": {}
   }
 }

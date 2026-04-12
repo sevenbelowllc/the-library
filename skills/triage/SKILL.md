@@ -16,7 +16,7 @@ Turn vault tags into tracked PM tasks.
 ## Process
 
 ### Step 1: Scan Tags
-Call `library_vault_parse` to get all tags.
+Call `library:vault:parse` to get all tags.
 
 ### Step 2: Map to Projects
 For each tag, determine target PM project based on:
@@ -26,7 +26,7 @@ For each tag, determine target PM project based on:
 
 ### Step 3: Deduplicate
 For each candidate task:
-- Call `library_pm_query` to check for existing tasks with similar summary
+- Call `library:pm:query` to check for existing tasks with similar summary
 - Skip if duplicate found
 
 ### Step 4: Draft Tasks
@@ -39,7 +39,7 @@ Present list of proposed tasks:
 
 ### Step 5: Create (with approval)
 Ask: "Create these N tasks? (yes / no / select)"
-- If yes: call `library_pm_create_task` for each
+- If yes: call `library:pm:create_task` for each
 - If select: let user pick which ones
 
 ### Step 6: Clear Tags
@@ -48,7 +48,7 @@ The tag's lifecycle: tag in vault → task in PM → tag removed.
 
 ## MCP Tools Used
 
-- `library_vault_parse` — scan tags
-- `library_pm_query` — deduplicate
-- `library_pm_create_task` — create tasks
-- `library_config_get` — project mapping
+- `library:vault:parse` — scan tags
+- `library:pm:query` — deduplicate
+- `library:pm:create_task` — create tasks
+- `library:config:get` — project mapping

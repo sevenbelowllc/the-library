@@ -51,8 +51,8 @@ Ask: "Do you want a centralized branding location in your Reading Room? This giv
 
 Ask: "Where is (or should be) your knowledge vault? (path, or 'create new')"
 
-- If existing path: validate structure with `library_vault_validate`
-- If "create new": ask for path, run `library_vault_init`
+- If existing path: validate structure with `library:vault:validate`
+- If "create new": ask for path, run `library:vault:init`
 - After vault init, ask: "Want to ingest sources now?" If yes, enter batch ingest loop (see `library:ingest --batch`)
 
 ### Step 4: PM Provider
@@ -82,7 +82,7 @@ Ask: "Do you want Graphify for cross-document relationship queries? (yes / no)"
 ### Step 6: Write Config & Register MCP
 
 - Write `library-config.yaml` to project root
-- Register `library-server` in Claude Code MCP settings
+- Register `library` in Claude Code MCP settings
 - If Graphify enabled, add `graphify` sidecar to MCP settings
 - Run validation, display any warnings
 - Display final config summary
@@ -106,13 +106,13 @@ Each subcommand manages a specific domain independently. The base `library:confi
 ### `library:config vault`
 
 1. **Report current state:**
-   - If vault exists: run `library_vault_validate`, report structure health, source count, wiki article count
+   - If vault exists: run `library:vault:validate`, report structure health, source count, wiki article count
    - If no vault configured: "No vault configured"
 
 2. **Offer options:**
-   - **A) Validate** — run `library_vault_validate`, display results
+   - **A) Validate** — run `library:vault:validate`, display results
    - **B) Ingest sources** — chain into `library:ingest --batch`
-   - **C) Create new vault** — ask for path, run `library_vault_init`
+   - **C) Create new vault** — ask for path, run `library:vault:init`
    - **D) Change vault path** — update config to point at a different vault
 
 ### `library:config pm`
@@ -137,18 +137,18 @@ Each subcommand manages a specific domain independently. The base `library:confi
 2. **Offer options:**
    - **A) Enable** — check installation, set defaults, add MCP sidecar
    - **B) Disable** — remove MCP sidecar, set `enabled: false`
-   - **C) Rebuild graph** — trigger `library_graph_rebuild`
+   - **C) Rebuild graph** — trigger `library:graph:rebuild`
    - **D) Change settings** — mode (deep/shallow), port, auto_rebuild
 
 ### `library:config mcp`
 
 1. **Report current state:**
-   - Check if `library-server` is registered in Claude Code MCP settings
+   - Check if `library` is registered in Claude Code MCP settings
    - Check if Graphify sidecar is registered (if enabled)
    - Show server command and any environment variables
 
 2. **Offer options:**
-   - **A) Register** — add `library-server` to MCP settings
+   - **A) Register** — add `library` to MCP settings
    - **B) Unregister** — remove from MCP settings
    - **C) Re-register** — remove and re-add (useful after upgrades)
    - **D) Status check** — verify server can start, test tool availability
@@ -157,13 +157,13 @@ Each subcommand manages a specific domain independently. The base `library:confi
 
 If `library-config.yaml` exists and no subcommand is given, show current config and ask what to change:
 - "Current config loaded. What would you like to update?"
-- Use `library_config_set` for individual changes
+- Use `library:config:set` for individual changes
 - Re-run validation after changes
 
 ## MCP Tools Used
 
-- `library_config_get` — read current config
-- `library_config_set` — update values
-- `library_vault_init` — scaffold vault (if creating new)
-- `library_vault_validate` — check existing vault
-- `library_graph_rebuild` — rebuild Graphify graph
+- `library:config:get` — read current config
+- `library:config:set` — update values
+- `library:vault:init` — scaffold vault (if creating new)
+- `library:vault:validate` — check existing vault
+- `library:graph:rebuild` — rebuild Graphify graph

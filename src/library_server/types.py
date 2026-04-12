@@ -1,4 +1,4 @@
-"""Shared types used across library-server modules."""
+"""Shared types used across library modules."""
 
 from __future__ import annotations
 

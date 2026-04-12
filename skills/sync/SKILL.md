@@ -17,11 +17,11 @@ Pull current project state from the configured PM tool.
 
 ### Step 1: Pull PM State
 For each project in config `pm.projects`:
-- Call `library_pm_sync` with project key
+- Call `library:pm:sync` with project key
 - Collect: open tasks, stale tasks, blocked tasks, recently closed
 
 ### Step 2: Cross-Reference Vault
-Call `library_vault_parse` for `[VERIFY]` tags.
+Call `library:vault:parse` for `[VERIFY]` tags.
 Compare: items marked `[VERIFY]` in vault but status=closed in PM → flag as "closed without verification."
 
 ### Step 3: Detect Stale Tasks
@@ -39,11 +39,11 @@ Present formatted summary per project:
 ### Step 5: Push (optional)
 If vault has items not tracked in PM:
 - Ask: "Found N vault items not in PM. Create draft tasks?"
-- If yes, call `library_pm_create_task` for each
+- If yes, call `library:pm:create_task` for each
 
 ## MCP Tools Used
 
-- `library_pm_sync` — pull PM state
-- `library_vault_parse` — vault tag cross-reference
-- `library_pm_create_task` — push untracked items (optional)
-- `library_config_get` — project list
+- `library:pm:sync` — pull PM state
+- `library:vault:parse` — vault tag cross-reference
+- `library:pm:create_task` — push untracked items (optional)
+- `library:config:get` — project list
