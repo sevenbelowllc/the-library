@@ -8,7 +8,7 @@
   },
   "plugins": [
     {
-      "name": "the-library",
+      "name": "library",
       "description": "Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
       "source": "./",
       "homepage": "https://github.com/sevenbelowllc/the-library",
