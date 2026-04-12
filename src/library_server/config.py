@@ -87,4 +87,20 @@ def validate_config(config: LibraryConfig) -> dict:
     if memory_path and not Path(memory_path).exists():
         warnings.append(f"Memory path does not exist: {memory_path} (will be created on first use)")
 
+    memory_cfg = config.raw.get("memory", {})
+    if memory_cfg:
+        budgets = memory_cfg.get("budgets", {})
+        if budgets.get("critical", 300) + budgets.get("fresh", 500) > 1000:
+            warnings.append("CRITICAL + FRESH budget exceeds 1000 tokens — high baseline cost")
+        learning = memory_cfg.get("keyword_learning", {})
+        if learning.get("hit_threshold", 0.8) <= learning.get("noise_threshold", 0.3):
+            warnings.append("hit_threshold must be greater than noise_threshold")
+
+    context_cfg = config.raw.get("context", {})
+    if context_cfg:
+        warn = context_cfg.get("warn_percentage", 50)
+        checkpoint = context_cfg.get("checkpoint_percentage", 60)
+        if warn >= checkpoint:
+            warnings.append("warn_percentage must be less than checkpoint_percentage")
+
     return {"valid": len(warnings) == 0, "warnings": warnings}
