@@ -4,20 +4,16 @@
 library:
   version: "1.0"
 
-# The Reading Room — your project's working area
-# Can be a separate repo or a directory within your project
+# The Reading Room — your project's canonical document home
+# Recommended: a dedicated repo. Can also be a directory in an existing repo.
 reading_room:
   path: "../my-reading-room"             # path to Reading Room (repo or directory)
   type: "repo"                           # repo | directory
-  specs: "docs/specs"                    # relative to reading_room.path
-  plans: "docs/plans"                    # where implementation plans live
-  checkpoints: "docs/checkpoints"        # where session checkpoints are written
-
-# Where your canonical spec files live (resolved from reading_room)
-specs:
-  path: "./docs/specs"                   # directory path, or omit if no specs
-  index: "INDEX.md"                      # optional entry point file
-  format: "markdown"                     # markdown (only option for now)
+  branding: "branding"                   # optional — centralized brand assets (kit, logos, tokens)
+  # Standard directories (convention, not configurable):
+  #   specs/        — canonical spec files
+  #   plans/        — implementation plans
+  #   checkpoints/  — session checkpoints
 
 # Knowledge base (Obsidian-native, Karpathy 3-layer pattern)
 vault:
@@ -48,14 +44,37 @@ graphify:
   mcp_port: 3001                        # Graphify MCP server port
   auto_rebuild: true                    # rebuild graph on ingest/compile
 
-# Claude memory lifecycle management
+# Memory Management
 memory:
-  path: "./.library/memory"             # where memory files are stored
-  index: "MEMORY.md"                    # index filename
-  max_index_lines: 200                  # truncate index after this many lines
-  stale_threshold_days: 30              # flag memories older than this
+  session_dir: "~/.library/sessions"
+  budgets:
+    critical: 300
+    fresh: 500
+    moderate_max: 1500
+    domain_file_max: 500
+  pruning:
+    graduation_threshold: 5
+    hitl_required: true
+  keyword_learning:
+    enabled: true
+    hitl_required: true
+    min_observations: 10
+    hit_threshold: 0.8
+    noise_threshold: 0.3
+    drift_window_days: 30
+    drift_drop_threshold: 0.4
 
-# Session checkpoints
-checkpoints:
-  path: "docs/checkpoints"             # resolved from reading_room path
-  format: "YYYY-MM-DD-HH-MM-SS-<topic>-checkpoint.md"
+# Context Brackets
+context:
+  warn_percentage: 50
+  checkpoint_percentage: 60
+
+# Hooks
+hooks:
+  enabled: true
+  session_start: true
+  user_prompt_submit: true
+  stop: true
+  pre_compact: true
+  session_end: true
+  status_line: true

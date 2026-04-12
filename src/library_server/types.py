@@ -87,3 +87,81 @@ class CheckpointData:
     open_decisions: list[dict] = field(default_factory=list)
     key_context: list[str] = field(default_factory=list)
     memory_updates: list[dict] = field(default_factory=list)
+
+
+# MMU Types
+
+
+class RoutingOutcome(Enum):
+    HIT = "hit"
+    NOISE = "noise"
+    MISS = "miss"
+    MISSED_TRIGGER = "missed_trigger"
+    CORRECT_SILENCE = "correct_silence"
+
+
+@dataclass
+class DomainFile:
+    domain: str
+    starter_keywords: list[str] = field(default_factory=list)
+    learned_keywords: list[str] = field(default_factory=list)
+    starter_excludes: list[str] = field(default_factory=list)
+    learned_excludes: list[str] = field(default_factory=list)
+    match_threshold: int = 1
+    token_estimate: int = 500
+    last_updated: str = ""
+
+    @property
+    def all_keywords(self) -> list[str]:
+        return self.starter_keywords + self.learned_keywords
+
+    @property
+    def all_excludes(self) -> list[str]:
+        return self.starter_excludes + self.learned_excludes
+
+
+@dataclass
+class RoutingEntry:
+    timestamp: str
+    session_id: str
+    prompt_hash: str
+    prompt_keywords: list[str]
+    matched_domain: str | None
+    match_type: str
+    injection_tokens: int = 0
+    outcome: RoutingOutcome | None = None
+    outcome_signal: str = ""
+
+
+@dataclass
+class ProjectStateData:
+    project: str
+    focus: str = ""
+    active_task: str = ""
+    blockers: list[str] = field(default_factory=list)
+    invariants: list[str] = field(default_factory=list)
+    pm_projects: list[dict] = field(default_factory=list)
+    recent_decisions: list[dict] = field(default_factory=list)
+    session_count: int = 0
+    vault_file_count: int = 0
+    domain_count: int = 0
+    decision_count: int = 0
+    claude_md_lines: int = 0
+    keyword_accuracy: float = 0.0
+    keyword_observations: int = 0
+
+
+@dataclass
+class SessionStateData:
+    session_id: str
+    task: str = ""
+    doing: str = ""
+    branch: str = "main"
+    resume_instructions: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
+    files_touched: list[str] = field(default_factory=list)
+    domains_loaded: list[str] = field(default_factory=list)
+    turns: int = 0
+    context_usage: float = 0.0
+    started: str = ""
+    last_updated: str = ""
