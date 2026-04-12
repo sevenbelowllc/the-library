@@ -25,20 +25,25 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jira = []
-linear = []
+# Jira uses Atlassian MCP (no extra packages needed)
+# Linear uses httpx (already a core dependency)
 graphify = ["graphifyy>=0.3.0"]
 axon = ["axoniq>=1.0.0"]
-all = ["httpx>=0.27.0", "graphifyy>=0.3.0", "axoniq>=1.0.0"]
+all = ["graphifyy>=0.3.0", "axoniq>=1.0.0"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-mock>=3.12",
     "pytest-cov>=5.0",
-    "httpx>=0.27.0",
     "graphifyy>=0.3.0",
     "axoniq>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sevenbelowllc/the-library"
+Repository = "https://github.com/sevenbelowllc/the-library.git"
+"Bug Tracker" = "https://github.com/sevenbelowllc/the-library/issues"
+Changelog = "https://github.com/sevenbelowllc/the-library/blob/main/CHANGELOG.md"
 
 [project.scripts]
 library = "library_server.cli:main"
