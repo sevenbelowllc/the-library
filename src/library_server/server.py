@@ -323,6 +323,138 @@ def library_memory_learn(vault_path: str = "") -> dict:
     }
 
 
+# --- Vault Builder tools ---
+
+@mcp.tool()
+def library_vault_builder_config(section: str = "") -> dict:
+    """Show current Vault Builder configuration and validation status."""
+    from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
+    cfg = load_vault_builder_config(get_config().path)
+    errors = validate_vault_builder_config(cfg)
+    result = {
+        "mode": cfg.mode,
+        "output_vault": str(cfg.output_vault) if cfg.output_vault else None,
+        "parallel": cfg.parallel,
+        "sources": list(cfg.sources.keys()),
+        "graphify_enabled": cfg.graphify.get("enabled", False),
+        "axon_enabled": cfg.axon.get("enabled", False),
+        "validation_errors": errors,
+        "valid": len(errors) == 0,
+    }
+    if section and section in cfg.sources:
+        result["source_detail"] = cfg.sources[section]
+    return result
+
+
+@mcp.tool()
+async def library_vault_builder_survey(sources: str = "") -> dict:
+    """Survey all or specific vault builder sources. Returns file counts and health."""
+    source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    orch = _get_vault_orchestrator()
+    surveys = await orch.survey(source_list)
+    vault_state = None
+    if orch.output_vault:
+        from library_server.vault_builder.orchestrator import detect_vault_state
+        vault_state = detect_vault_state(orch.output_vault).value
+    return {"vault_state": vault_state, "sources": surveys}
+
+
+@mcp.tool()
+async def library_vault_builder_preview(sources: str = "") -> dict:
+    """Dry run — show what would be extracted without writing."""
+    source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    orch = _get_vault_orchestrator()
+    previews = await orch.preview(source_list)
+    return {"sources": previews}
+
+
+@mcp.tool()
+async def library_vault_builder_build(sources: str = "", force: bool = False) -> dict:
+    """Full parallel extraction + Graphify build. Pass force=True to overwrite existing vault."""
+    source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    orch = _get_vault_orchestrator()
+
+    if orch.output_vault:
+        from library_server.vault_builder.orchestrator import detect_vault_state, check_safety_gate
+        vault_state = detect_vault_state(orch.output_vault)
+        gate = check_safety_gate(orch.mode, vault_state, force)
+        if gate["blocked"]:
+            return {"status": "blocked", "message": gate["message"]}
+
+    result = await orch.build(source_list, force)
+    return {
+        "status": result.status,
+        "extract_results": [
+            {"source": r.source_name, "success": r.success, "files": len(r.files_written), "errors": r.errors}
+            for r in result.extract_results
+        ],
+        "graphify_status": result.graphify_status,
+        "duration_seconds": round(result.duration_seconds, 1),
+        "manifest_path": result.manifest_path,
+    }
+
+
+@mcp.tool()
+async def library_vault_builder_extract(extractor: str, dry_run: bool = False) -> dict:
+    """Run a single extractor by name. Set dry_run=True for preview only."""
+    orch = _get_vault_orchestrator()
+    if dry_run:
+        previews = await orch.preview([extractor])
+        return {"mode": "preview", "sources": previews}
+    result = await orch.build([extractor])
+    return {
+        "status": result.status,
+        "extract_results": [
+            {"source": r.source_name, "success": r.success, "files": len(r.files_written), "errors": r.errors}
+            for r in result.extract_results
+        ],
+    }
+
+
+def _get_vault_orchestrator():
+    """Build a VaultBuildOrchestrator from config."""
+    from library_server.vault_builder.config import load_vault_builder_config
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.extractors.specs import SpecsExtractor
+    from library_server.vault_builder.extractors.claude_memory import ClaudeMemoryExtractor
+    from library_server.vault_builder.extractors.session_context import SessionContextExtractor
+    from library_server.vault_builder.extractors.notebooklm import NotebookLMExtractor
+    from library_server.vault_builder.extractors.obsidian_vault import ObsidianVaultExtractor
+    from library_server.vault_builder.extractors.jira import JiraExtractor
+    from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor
+
+    config = get_config()
+    vb_cfg = load_vault_builder_config(config.path)
+
+    registry = PluginRegistry()
+
+    extractor_map = {
+        "specs": SpecsExtractor,
+        "claude_memory": ClaudeMemoryExtractor,
+        "session_context": SessionContextExtractor,
+        "notebooklm": NotebookLMExtractor,
+        "obsidian_vault": ObsidianVaultExtractor,
+        "jira": JiraExtractor,
+        "axon_bridge": AxonBridgeExtractor,
+    }
+
+    for name, cls in extractor_map.items():
+        source_cfg = vb_cfg.sources.get(name, {})
+        if source_cfg:
+            registry.register(cls(config=source_cfg))
+
+    graphify = GraphifyRunner(config=vb_cfg.graphify)
+
+    return VaultBuildOrchestrator(
+        registry=registry,
+        graphify_runner=graphify,
+        output_vault=vb_cfg.output_vault or Path.cwd() / "vault-output",
+        mode=vb_cfg.mode,
+    )
+
+
 # Tool registrations for other modules are added in Phase 1-2.
 # Each module defines functions that get registered here after implementation.
 
