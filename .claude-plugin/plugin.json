@@ -1,5 +1,5 @@
 {
-  "name": "the-library",
+  "name": "library",
   "version": "0.3.0",
   "description": "Meta-system for AI-assisted project management. Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
   "author": {
