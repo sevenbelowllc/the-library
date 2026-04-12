@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sevenbelowllc-the-library",
+  "description": "The Library — open-source meta-system for AI-assisted project management",
+  "owner": {
+    "name": "SevenBelow LLC",
+    "email": "dev@sevenbelow.io"
+  },
+  "plugins": [
+    {
+      "name": "the-library",
+      "description": "Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
+      "source": "./",
+      "homepage": "https://github.com/sevenbelowllc/the-library",
+      "category": "productivity",
+      "author": {
+        "name": "SevenBelow LLC",
+        "email": "dev@sevenbelow.io"
+      },
+      "tags": ["mcp", "knowledge-management", "project-management", "obsidian", "graphify", "jira"],
+      "version": "0.3.0"
+    }
+  ]
+}
