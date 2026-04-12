@@ -29,7 +29,7 @@ Review the conversation and recent tool calls to collect:
 
 ### Step 2: Write Checkpoint
 
-Call `library_checkpoint_write` with gathered data:
+Call `library:checkpoint:write` with gathered data:
 
 - **topic**: kebab-case summary (e.g., "auth-middleware-refactor")
 - **status**: current state in one line
@@ -53,12 +53,12 @@ Content: path to checkpoint file, resume point, key decisions.
 ### Step 4: Update PM Tasks (if PM configured)
 
 For each PM task touched this session:
-- Call `library_pm_update` with a comment summarizing progress
+- Call `library:pm:update` with a comment summarizing progress
 - If task is complete, transition status (but only if verified — evidence before claims)
 
 ### Step 5: Check for Orphaned Work
 
-Call `library_pm_sync` for active projects. Compare accomplished work against open tasks.
+Call `library:pm:sync` for active projects. Compare accomplished work against open tasks.
 Flag any session work that doesn't match a PM task (orphaned work — should it be tracked?).
 
 ### Step 6: Confirm
@@ -78,6 +78,6 @@ Wait for user confirmation.
 
 ## MCP Tools Used
 
-- `library_checkpoint_write` — write structured checkpoint file
-- `library_pm_update` — comment on PM tasks (if PM configured)
-- `library_pm_sync` — check for orphaned work (if PM configured)
+- `library:checkpoint:write` — write structured checkpoint file
+- `library:pm:update` — comment on PM tasks (if PM configured)
+- `library:pm:sync` — check for orphaned work (if PM configured)

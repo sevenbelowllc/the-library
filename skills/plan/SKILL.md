@@ -39,15 +39,15 @@ Epic: "Vault Module"
 
 ### Step 4: Create (with approval)
 Ask: "Create these N epics and M tasks?"
-- Call `library_pm_create_epic` for each epic
-- Call `library_pm_create_task` for each task, linked to its epic
+- Call `library:pm:create_epic` for each epic
+- Call `library:pm:create_task` for each task, linked to its epic
 
 ### Step 5: Link Back
 Add a comment on each created epic linking to the source spec file.
 
 ## MCP Tools Used
 
-- `library_pm_create_epic` — create epics
-- `library_pm_create_task` — create tasks
-- `library_pm_update` — add link-back comments
-- `library_config_get` — project keys
+- `library:pm:create_epic` — create epics
+- `library:pm:create_task` — create tasks
+- `library:pm:update` — add link-back comments
+- `library:config:get` — project keys

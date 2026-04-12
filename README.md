@@ -28,20 +28,21 @@ pip install the-library[all]       # Everything
 ## Quick Start
 
 ```bash
-# Install the Claude Code plugin
+# 1. Install
+pip install the-library
+
+# 2. Initialize (creates config, vault, hooks, domains — one command)
+cd your-project
+library init
+
+# 3. (Optional) Install the Claude Code plugin for skills
 claude plugins install sevenbelowllc/the-library
 
-# Configure (interactive setup)
-# In Claude Code, run:
+# 4. (Optional) Interactive fine-tuning in Claude Code
 library:config
 ```
 
-The config wizard asks 5 questions:
-1. Where is your Reading Room? (repo or directory for specs, plans, checkpoints)
-2. Where are your specs?
-3. Where is your knowledge vault?
-4. What PM tool do you use?
-5. Do you want Graphify?
+`library init` handles everything: config file, Reading Room, vault structure, runtime directories, SESSION.md, PROJECT-STATE.md, domain manifests, hooks, and validation. One command, zero manual steps.
 
 ### Reading Room Setup
 
@@ -72,18 +73,25 @@ The Library runs as an MCP server exposing 20 tools across 6 modules:
 
 | Module | Tools |
 |--------|-------|
-| Config | `library_config_get`, `library_config_set` |
-| Vault | `library_vault_init`, `library_vault_validate`, `library_vault_parse`, `library_vault_ingest` |
-| PM | `library_pm_create_task`, `library_pm_create_epic`, `library_pm_sync`, `library_pm_update`, `library_pm_query` |
-| Memory | `library_memory_scan`, `library_memory_aggregate`, `library_memory_prune` |
-| Checkpoint | `library_checkpoint_write`, `library_checkpoint_read`, `library_checkpoint_list` |
-| Graph | `library_graph_rebuild`, `library_graph_query`, `library_graph_path` |
+| Config | `library:config:get`, `library:config:set` |
+| Vault | `library:vault:init`, `library:vault:validate`, `library:vault:parse`, `library:vault:ingest` |
+| PM | `library:pm:create_task`, `library:pm:create_epic`, `library:pm:sync`, `library:pm:update`, `library:pm:query` |
+| Memory | `library:memory:scan`, `library:memory:aggregate`, `library:memory:prune` |
+| Checkpoint | `library:checkpoint:write`, `library:checkpoint:read`, `library:checkpoint:list` |
+| Graph | `library:graph:rebuild`, `library:graph:query`, `library:graph:path` |
 
 ```bash
-# Run standalone
-library-server
+# Initialize (creates config, vault, hooks — everything)
+library init
 
-# Or configure in Claude Code settings
+# Run MCP server standalone
+library
+
+# Validate installation
+library validate
+
+# Auto-fix common issues
+library doctor
 ```
 
 ## Configuration
@@ -116,7 +124,7 @@ Context Window (RAM)          Hooks (Interrupt Handlers)       Vault (Disk)
 
 ### Setup
 
-The MMU is configured automatically during `library-config` setup. Two questions:
+The MMU is configured automatically during `library init` or `library:config` setup. Two questions:
 1. Where is your Reading Room?
 2. Do you use Jira, Linear, or neither?
 

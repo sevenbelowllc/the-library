@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-library-server = "library_server.server:main"
+library = "library_server.cli:main"
 
 [build-system]
 requires = ["hatchling"]

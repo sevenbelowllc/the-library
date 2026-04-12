@@ -31,13 +31,13 @@ Determine content category (e.g., "prds", "session-notes", "security-audits").
 Suggest based on filename/content. Ask user to confirm.
 
 ### Step 3: Ingest
-Call `library_vault_ingest` with vault_path, source_path, tier, category.
+Call `library:vault:ingest` with vault_path, source_path, tier, category.
 
 ### Step 4: Report
 Display: what was ingested, where it landed, what compile targets it affects.
 
 ### Step 5: Rebuild Graph (if enabled)
-If `graphify.auto_rebuild: true` in config, call `library_graph_rebuild`.
+If `graphify.auto_rebuild: true` in config, call `library:graph:rebuild`.
 
 ## Batch Mode (--batch)
 
@@ -56,6 +56,6 @@ If yes, enters batch mode automatically.
 
 ## MCP Tools Used
 
-- `library_vault_ingest` — classify and bucket source material
-- `library_graph_rebuild` — rebuild knowledge graph (if enabled)
-- `library_config_get` — read vault path and graphify settings
+- `library:vault:ingest` — classify and bucket source material
+- `library:graph:rebuild` — rebuild knowledge graph (if enabled)
+- `library:config:get` — read vault path and graphify settings

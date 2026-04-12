@@ -17,7 +17,7 @@ Compile wiki articles from raw vault sources following the Karpathy pattern.
 ## Process
 
 ### Step 1: Load Compile Order
-Call `library_config_get` to get vault path.
+Call `library:config:get` to get vault path.
 Read `kb.yaml` from vault root for compile order and category list.
 
 ### Step 2: For Each Target Article
@@ -48,7 +48,7 @@ last_compiled: 2026-04-10
 ```
 
 ### Step 4: Rebuild Graph
-If `graphify.auto_rebuild: true`, call `library_graph_rebuild`.
+If `graphify.auto_rebuild: true`, call `library:graph:rebuild`.
 
 ### Step 5: Report
 Display: articles compiled, tags generated, sources consumed.
@@ -60,6 +60,6 @@ No incremental merge — fresh compile every time. Sources are immutable.
 
 ## MCP Tools Used
 
-- `library_config_get` — vault path
-- `library_vault_parse` — read existing wiki state
-- `library_graph_rebuild` — rebuild graph after compilation
+- `library:config:get` — vault path
+- `library:vault:parse` — read existing wiki state
+- `library:graph:rebuild` — rebuild graph after compilation
