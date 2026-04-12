@@ -1,5 +1,7 @@
 """The Library — MCP server entry point."""
 
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 from library_server.config import load_config, LibraryConfig
@@ -256,6 +258,69 @@ def library_graph_path(node_a: str, node_b: str) -> dict:
         graph_path=graph_config.get("graph_path", ""),
         enabled=graph_config.get("enabled", False),
     )
+
+
+@mcp.tool()
+def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
+    """Get memory system health report — keyword accuracy, vault stats, CLAUDE.md lines."""
+    from library_server.hooks.config_loader import load_hook_config
+    config = load_hook_config(Path.cwd())
+
+    v_path = Path(vault_path) if vault_path else Path(config.get("vault", {}).get("path", "./vault"))
+    domains_dir = v_path / "domains"
+    decisions_dir = v_path / "decisions"
+
+    domain_count = len(list(domains_dir.glob("*.md"))) if domains_dir.exists() else 0
+    decision_count = len(list(decisions_dir.glob("*.md"))) if decisions_dir.exists() else 0
+    vault_file_count = len(list(v_path.rglob("*.md"))) if v_path.exists() else 0
+
+    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
+    journal_path = learning_dir / "routing-journal.jsonl"
+
+    accuracy_report = {}
+    if journal_path.exists():
+        from library_server.hooks.learning import analyze_routing_accuracy
+        accuracy_report = analyze_routing_accuracy(journal_path, min_observations=5)
+
+    return {
+        "vault_file_count": vault_file_count,
+        "domain_count": domain_count,
+        "decision_count": decision_count,
+        "keyword_accuracy": accuracy_report,
+        "status": "healthy",
+    }
+
+
+@mcp.tool()
+def library_memory_learn(vault_path: str = "") -> dict:
+    """Analyze routing journal and propose keyword improvements."""
+    from library_server.hooks.config_loader import load_hook_config
+    from library_server.hooks.learning import analyze_routing_accuracy, detect_drift
+
+    config = load_hook_config(Path.cwd())
+    learning_cfg = config.get("memory", {}).get("keyword_learning", {})
+
+    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
+    journal_path = learning_dir / "routing-journal.jsonl"
+
+    if not journal_path.exists():
+        return {"status": "no_data", "message": "No routing journal found. Use The Library for a few sessions first."}
+
+    accuracy = analyze_routing_accuracy(
+        journal_path,
+        min_observations=learning_cfg.get("min_observations", 10),
+    )
+    drifts = detect_drift(
+        journal_path,
+        window_entries=learning_cfg.get("drift_window_days", 30),
+        drop_threshold=learning_cfg.get("drift_drop_threshold", 0.4),
+    )
+
+    return {
+        "accuracy": accuracy,
+        "drifts": drifts,
+        "status": "analyzed",
+    }
 
 
 # Tool registrations for other modules are added in Phase 1-2.

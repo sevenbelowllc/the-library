@@ -52,6 +52,26 @@ Compare memory entries against:
 
 Report conflicts for manual resolution.
 
+### Health Report
+Call `library_memory_health` to get:
+- Vault stats (file count, domain count, decision count)
+- Keyword accuracy per domain
+- CLAUDE.md line count
+- Present as formatted report to user
+
+### Learning Report
+Call `library_memory_learn` to get:
+- Per-domain accuracy with hit/miss/noise counts
+- Drift detection results
+- Propose keyword changes to user (HITL — user approves each change)
+- Apply approved changes by editing domain file frontmatter
+
+### Optimize
+Call `library_memory_scan` on ~/.claude/projects/*/memory/:
+- Identify stale Claude auto-memories (>30 days, low reference)
+- Propose offloading to vault wiki articles (HITL per entry)
+- Remove migrated entries from Claude memory, keep pointer in MEMORY.md
+
 ## Safety
 
 - **Always dry_run first.** Never delete without showing candidates.
@@ -64,3 +84,5 @@ Report conflicts for manual resolution.
 - `library_memory_aggregate` — find merge opportunities
 - `library_memory_prune` — remove stale entries
 - `library_config_get` — memory path and thresholds
+- `library_memory_health`
+- `library_memory_learn`
