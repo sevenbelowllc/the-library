@@ -90,6 +90,42 @@ library-server
 
 See `library-config.example.yaml` for all options.
 
+## Memory Management Unit (v0.2.0)
+
+The Library includes a Memory Management Unit (MMU) that prevents contextual drift across AI-assisted development sessions.
+
+### How It Works
+
+- **800 token baseline** — Injects minimal project context at session start (PROJECT-STATE.md + SESSION.md)
+- **Demand-paged** — Domain-specific context loaded only when keyword patterns match your prompts
+- **Zero-token hooks** — 6 lifecycle hooks run programmatically, never consuming LLM tokens
+- **Auto-learning** — Observes which context injections help and which are noise, proposes improvements over time
+- **Crash recovery** — Stop hook heartbeat updates SESSION.md every turn, max 1 turn lost on crash
+
+### Architecture
+
+```
+Context Window (RAM)          Hooks (Interrupt Handlers)       Vault (Disk)
+├─ CRITICAL ~300 tokens       ├─ SessionStart (boot)           ├─ domains/
+├─ FRESH ~500 tokens          ├─ UserPromptSubmit (page fault)  ├─ decisions/
+├─ MODERATE 0-1500 tokens     ├─ Stop (heartbeat)              ├─ sessions/
+└─ DEEP 0-unlimited           ├─ PreCompact (emergency save)   ├─ sources/raw/
+                               ├─ SessionEnd (shutdown)         └─ wiki/
+                               └─ StatusLine (monitor)
+```
+
+### Setup
+
+The MMU is configured automatically during `library-config` setup. Two questions:
+1. Where is your Reading Room?
+2. Do you use Jira, Linear, or neither?
+
+Everything else uses smart defaults. Run `/library-config` to customize.
+
+### Spec
+
+Full specification: [MEMORY-MANAGEMENT.md](../library-reading-room/specs/MEMORY-MANAGEMENT.md)
+
 ## License
 
 MIT - SevenBelow LLC
