@@ -119,3 +119,38 @@ async def test_extract_status_tags(jira_extractor, output_dir: Path):
     assert "done" in done["tags"]
     ip = _parse_frontmatter((output_dir / "jira" / "DEIOCAP" / "DEIOCAP-10.md").read_text())
     assert "in-progress" in ip["tags"]
+
+
+# ---------------------------------------------------------------------------
+# survey() tests
+# ---------------------------------------------------------------------------
+
+async def test_survey_returns_correct_counts(jira_extractor):
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, return_value=SAMPLE_ISSUES):
+        result = await jira_extractor.survey()
+    assert result.source_name == "jira"
+    assert result.file_count == 3
+    assert result.health == "connected"
+
+
+async def test_survey_handles_fetch_error(jira_extractor):
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, side_effect=Exception("Network error")):
+        result = await jira_extractor.survey()
+    assert result.file_count == 0
+
+
+# ---------------------------------------------------------------------------
+# preview() tests
+# ---------------------------------------------------------------------------
+
+async def test_preview_shows_expected_files(jira_extractor):
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, return_value=SAMPLE_ISSUES):
+        result = await jira_extractor.preview()
+    assert len(result.files_to_create) == 3
+    assert any("DEIOCAP-1" in f for f in result.files_to_create)
+
+
+async def test_preview_handles_fetch_error(jira_extractor):
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, side_effect=Exception("Network error")):
+        result = await jira_extractor.preview()
+    assert result.files_to_create == []
