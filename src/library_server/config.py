@@ -103,4 +103,13 @@ def validate_config(config: LibraryConfig) -> dict:
         if warn >= checkpoint:
             warnings.append("warn_percentage must be less than checkpoint_percentage")
 
+    # Check vault builder config
+    vb = config.raw.get("vault_builder", {})
+    if vb:
+        vb_mode = vb.get("mode", "create")
+        if vb_mode not in ("create", "enrich"):
+            warnings.append(f"vault_builder.mode must be 'create' or 'enrich', got: {vb_mode}")
+        if not vb.get("output_vault"):
+            warnings.append("vault_builder.output_vault is not configured")
+
     return {"valid": len(warnings) == 0, "warnings": warnings}
