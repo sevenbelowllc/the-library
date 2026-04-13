@@ -70,7 +70,11 @@ class TestFormatStatusLine:
             },
         }
         result = format_status_line(data, claude_md_lines=100)
-        assert result.startswith("LIB ")
+        assert "LIB" in result
+        # Context percentage appears before LIB
+        lib_idx = result.index("LIB")
+        pct_idx = result.index("23%")
+        assert pct_idx < lib_idx
 
     def test_output_contains_five_hour_label(self) -> None:
         from library_server.hooks.scripts.status_line import format_status_line
@@ -123,7 +127,7 @@ class TestFormatStatusLine:
             },
         }
         result = format_status_line(data, claude_md_lines=0)
-        assert "LIB 0%" in result
+        assert "0% LIB" in result
 
 
 class TestWriteContextUsage:
