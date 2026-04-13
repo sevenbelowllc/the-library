@@ -216,6 +216,42 @@ def test_update_session_turn_updates_last_updated(tmp_path: Path, empty_session:
     assert parsed.last_updated != empty_session.started
 
 
+def test_update_session_turn_empty_doing_preserves_existing(tmp_path: Path, full_session: SessionStateData):
+    """Passing doing='' should preserve the existing 'Doing' value."""
+    state_file = tmp_path / "SESSION.md"
+    state_file.write_text(render_session_state(full_session), encoding="utf-8")
+
+    update_session_turn(
+        state_file,
+        context_usage=0.50,
+        doing="",
+        new_files=[],
+        new_decision=None,
+        new_domain=None,
+    )
+
+    parsed = parse_session_state(state_file)
+    assert parsed.doing == full_session.doing
+
+
+def test_update_session_turn_nonempty_doing_updates(tmp_path: Path, full_session: SessionStateData):
+    """Passing a non-empty doing value should update the field."""
+    state_file = tmp_path / "SESSION.md"
+    state_file.write_text(render_session_state(full_session), encoding="utf-8")
+
+    update_session_turn(
+        state_file,
+        context_usage=0.50,
+        doing="New task now",
+        new_files=[],
+        new_decision=None,
+        new_domain=None,
+    )
+
+    parsed = parse_session_state(state_file)
+    assert parsed.doing == "New task now"
+
+
 def test_update_session_turn_no_duplicates_in_domains(tmp_path: Path, empty_session: SessionStateData):
     """Calling update twice with same domain should not duplicate."""
     state_file = tmp_path / "SESSION.md"

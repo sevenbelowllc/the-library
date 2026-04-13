@@ -134,7 +134,8 @@ def update_session_turn(
     data.turns += 1
     data.last_updated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     data.context_usage = context_usage
-    data.doing = doing
+    if doing:
+        data.doing = doing
 
     for f in new_files:
         if f not in data.files_touched:

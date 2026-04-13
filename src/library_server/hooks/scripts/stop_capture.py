@@ -123,13 +123,13 @@ def process_stop(
             update_session_turn(
                 path=session_md,
                 context_usage=context_usage,
-                doing="",  # preserve existing "doing" by passing empty — handled inside
+                doing="",  # empty string preserves existing value in update_session_turn
                 new_files=new_files,
                 new_decision=new_decision,
                 new_domain=None,
             )
-        except Exception:
-            pass  # Graceful degradation: don't fail the hook
+        except Exception as exc:
+            print(f"[library] stop_capture: failed to update SESSION.md: {exc}", file=sys.stderr)
 
     warning = _build_warning(context_usage, warn_pct, checkpoint_pct)
     return {"warning": warning}

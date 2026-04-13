@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from library_server.hooks.installer import generate_hooks_config, install_hooks
+from library_server.hooks.installer import (
+    _SCRIPT_NAMES,
+    _deploy_scripts,
+    generate_hooks_config,
+    install_hooks,
+)
 
 
 class TestGenerateHooksConfig:
@@ -96,6 +101,37 @@ class TestGenerateHooksConfig:
         assert len(config["hooks"]) == 5
 
 
+class TestDeployScripts:
+    def test_deploys_all_scripts(self, tmp_path: Path) -> None:
+        """_deploy_scripts should copy all hook scripts to the target directory."""
+        target = tmp_path / "hooks"
+        deployed = _deploy_scripts(target)
+
+        assert deployed == len(_SCRIPT_NAMES)
+        for name in _SCRIPT_NAMES:
+            assert (target / f"{name}.py").is_file()
+
+    def test_creates_target_directory(self, tmp_path: Path) -> None:
+        """_deploy_scripts should create the target directory if it doesn't exist."""
+        target = tmp_path / "deep" / "nested" / "hooks"
+        assert not target.exists()
+
+        _deploy_scripts(target)
+
+        assert target.is_dir()
+
+    def test_overwrites_existing_scripts(self, tmp_path: Path) -> None:
+        """_deploy_scripts should overwrite scripts that already exist."""
+        target = tmp_path / "hooks"
+        target.mkdir()
+        old_file = target / f"{_SCRIPT_NAMES[0]}.py"
+        old_file.write_text("# old content", encoding="utf-8")
+
+        _deploy_scripts(target)
+
+        assert old_file.read_text(encoding="utf-8") != "# old content"
+
+
 class TestInstallHooks:
     def test_install_hooks_creates_new_file(self, tmp_path: Path) -> None:
         """install_hooks should create settings.json when it doesn't exist."""
@@ -105,6 +141,7 @@ class TestInstallHooks:
 
         assert result["status"] == "installed"
         assert result["hooks_count"] == 5
+        assert result["scripts_deployed"] == len(_SCRIPT_NAMES)
         assert settings_path.exists()
 
         content = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -203,6 +240,17 @@ class TestInstallHooks:
         result = install_hooks(settings_path)
 
         assert result["hooks_count"] == 5
+
+    def test_install_hooks_deploys_scripts_to_hooks_dir(self, tmp_path: Path) -> None:
+        """install_hooks must deploy script files alongside the settings config."""
+        settings_path = tmp_path / ".claude" / "settings.json"
+
+        install_hooks(settings_path)
+
+        hooks_dir = tmp_path / ".claude" / "hooks"
+        assert hooks_dir.is_dir()
+        for name in _SCRIPT_NAMES:
+            assert (hooks_dir / f"{name}.py").is_file(), f"Missing {name}.py in hooks dir"
 
     def test_install_hooks_handles_corrupt_existing_file(self, tmp_path: Path) -> None:
         """install_hooks should not crash if existing settings.json is corrupt JSON."""
