@@ -343,3 +343,166 @@ async def test_build_handles_extractor_exception(tmp_path: Path):
     assert result.status == "failed"
     assert len(result.extract_results) == 1
     assert "Extractor crashed" in result.extract_results[0].errors[0]
+
+
+# ---------------------------------------------------------------------------
+# validate_all() — pre-build validation gate (Gap 1)
+# ---------------------------------------------------------------------------
+
+class InvalidConfigExtractor(BaseExtractor):
+    name = "bad_config"
+    display_name = "Bad Config"
+    source_description = "Has config errors"
+    output_subdir = "bad_config"
+
+    async def survey(self) -> SurveyResult:
+        return SurveyResult(source_name=self.name, file_count=0, total_size_bytes=0)
+
+    async def preview(self) -> PreviewResult:
+        return PreviewResult(source_name=self.name)
+
+    async def extract(self, output_dir: Path) -> ExtractResult:
+        return ExtractResult(source_name=self.name, success=False)
+
+    def validate_config(self) -> list[str]:
+        return ["Missing required config: api_key", "Missing env var: SOME_TOKEN"]
+
+
+async def test_validate_all_returns_errors_for_invalid_extractors(tmp_path: Path):
+    """validate_all() must surface config errors from each extractor."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(SuccessExtractor(config={"enabled": True}))
+    registry.register(InvalidConfigExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": False})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    errors = orch.validate_all(registry.get_enabled())
+    assert "bad_config" in errors
+    assert len(errors["bad_config"]) == 2
+    assert "success" not in errors
+
+
+async def test_build_includes_config_warnings_in_result(tmp_path: Path):
+    """Build result must carry config_warnings so callers know about misconfigured extractors."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(SuccessExtractor(config={"enabled": True}))
+    registry.register(InvalidConfigExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": False})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    result = await orch.build()
+    assert "bad_config" in result.config_warnings
+    # Build continues — validation errors are warnings, not hard failures
+    assert result.any_succeeded is True
+    # Status should reflect warnings from both failed extractor AND config errors
+    assert result.status == "completed_with_warnings"
+
+
+async def test_build_with_all_valid_config_has_no_warnings(tmp_path: Path):
+    """When all extractors have valid config, config_warnings must be empty."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(SuccessExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": False})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    result = await orch.build()
+    assert result.config_warnings == {}
+    assert result.status == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Graphify quality gate (Gap 3)
+# ---------------------------------------------------------------------------
+
+async def test_graphify_skipped_when_no_extractors_succeed(tmp_path: Path):
+    """Graphify must not run if no extractor succeeded — even if graphify is enabled."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(FailExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": True, "command": "graphify"})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    with patch.object(graphify, "build", new_callable=AsyncMock) as mock_build:
+        result = await orch.build()
+        mock_build.assert_not_called()
+
+    assert result.graphify_status == "skipped"
+    assert "skipped" in result.graphify_message.lower()
+
+
+async def test_graphify_runs_when_any_extractor_succeeds(tmp_path: Path):
+    """Graphify must run when at least one extractor succeeds, even if others fail."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(SuccessExtractor(config={"enabled": True}))
+    registry.register(FailExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": True, "command": "graphify"})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    with patch.object(graphify, "build", new_callable=AsyncMock, return_value={"status": "success"}) as mock_build:
+        result = await orch.build()
+        mock_build.assert_called_once()
+
+    assert result.graphify_status == "success"
+
+
+async def test_build_with_sources_filter_runs_only_named_extractors(tmp_path: Path):
+    """build(sources=[...]) must only run the named extractors."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    registry = PluginRegistry()
+    registry.register(SuccessExtractor(config={"enabled": True}))
+    registry.register(FailExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": False})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    result = await orch.build(sources=["success"])
+    # Only "success" extractor ran — FailExtractor was not included
+    assert result.any_succeeded is True
+    assert len(result.extract_results) == 1
+    assert result.extract_results[0].source_name == "success"
+
+
+async def test_survey_includes_structure_summary_as_detail(tmp_path: Path):
+    """survey() must include structure_summary in the 'detail' key when non-empty."""
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    class DetailedExtractor(SuccessExtractor):
+        name = "detailed"
+        display_name = "Detailed"
+        output_subdir = "detailed"
+        async def survey(self) -> SurveyResult:
+            return SurveyResult(
+                source_name=self.name, file_count=5, total_size_bytes=1000,
+                structure_summary="5 repos: compliance-core, compliance-ui",
+            )
+
+    registry = PluginRegistry()
+    registry.register(DetailedExtractor(config={"enabled": True}))
+    graphify = GraphifyRunner(config={"enabled": False})
+    orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
+
+    surveys = await orch.survey()
+    assert surveys[0]["detail"] == "5 repos: compliance-core, compliance-ui"

@@ -153,6 +153,43 @@ async def test_survey_handles_fetch_error(jira_extractor):
     assert result.file_count == 0
 
 
+async def test_survey_all_projects_fail_returns_error_health(jira_extractor):
+    """If every project is unreachable (e.g. bad auth), health must be 'error', not 'empty'."""
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, side_effect=Exception("401 Unauthorized")):
+        result = await jira_extractor.survey()
+    assert result.health == "error"
+    assert "unreachable" in result.structure_summary.lower()
+
+
+async def test_survey_partial_failure_returns_degraded_health():
+    """If only some projects fail, health should be 'degraded'."""
+    from library_server.vault_builder.extractors.jira import JiraExtractor
+    ext = JiraExtractor(config={
+        "enabled": True,
+        "projects": ["PROJ_A", "PROJ_B"],
+        "instance": "test.atlassian.net",
+    })
+
+    async def fetch_side_effect(project):
+        if project == "PROJ_A":
+            raise Exception("Not found")
+        return SAMPLE_ISSUES
+
+    with patch.object(ext, "_fetch_issues", new_callable=AsyncMock, side_effect=fetch_side_effect):
+        result = await ext.survey()
+    assert result.health == "degraded"
+    assert result.file_count == 3
+
+
+async def test_extract_all_projects_fail_marks_success_false(jira_extractor):
+    """If all project fetches fail, success must be False even if files_written is empty."""
+    with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, side_effect=Exception("503 Service Unavailable")):
+        result = await jira_extractor.extract(Path("/tmp/jira_test"))
+    assert result.success is False
+    assert len(result.errors) > 0
+    assert any("503" in e for e in result.errors)
+
+
 # ---------------------------------------------------------------------------
 # preview() tests
 # ---------------------------------------------------------------------------

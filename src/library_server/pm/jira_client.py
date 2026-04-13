@@ -38,6 +38,7 @@ class JiraClient:
         self._timeout = timeout
         creds = base64.b64encode(f"{email}:{token}".encode()).decode()
         self._auth_header = f"Basic {creds}"
+        self._epic_name_field_id: str | None = None
 
     # ------------------------------------------------------------------
     # Internal request helper
@@ -66,8 +67,15 @@ class JiraClient:
         if not (200 <= resp.status_code < 300):
             try:
                 body = resp.json()
-                msg = body.get("errorMessages", [resp.text])
-                message = "; ".join(msg) if isinstance(msg, list) else str(msg)
+                msg = body.get("errorMessages", [])
+                if not isinstance(msg, list):
+                    msg = [str(msg)]
+                errs = body.get("errors", {})
+                if errs:
+                    msg.extend(f"{k}: {v}" for k, v in errs.items())
+                if not msg:
+                    msg = [resp.text]
+                message = "; ".join(msg)
             except Exception:
                 message = resp.text
             raise JiraApiError(
@@ -91,18 +99,24 @@ class JiraClient:
         project_type_key: str = "software",
         lead_account_id: str = "",
         description: str = "",
+        template_key: str = "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
     ) -> dict[str, Any]:
         """POST /rest/api/3/project"""
+        payload = {
+            "name": name,
+            "key": key,
+            "projectTypeKey": project_type_key,
+            "projectTemplateKey": template_key,
+            "description": description,
+            "assigneeType": "PROJECT_LEAD",
+        }
+        if lead_account_id:
+            payload["leadAccountId"] = lead_account_id
+            
         return await self._request(
             "POST",
             "/rest/api/3/project",
-            json={
-                "name": name,
-                "key": key,
-                "projectTypeKey": project_type_key,
-                "leadAccountId": lead_account_id,
-                "description": description,
-            },
+            json=payload,
         )
 
     async def list_projects(
@@ -143,6 +157,7 @@ class JiraClient:
         labels: list[str] | None = None,
         parent_key: str = "",
         assignee_id: str = "",
+        custom_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST /rest/api/3/issue — description uses ADF format."""
         fields: dict[str, Any] = {
@@ -151,6 +166,8 @@ class JiraClient:
             "summary": summary,
             "description": _to_adf(description),
         }
+        if custom_fields:
+            fields.update(custom_fields)
         if labels:
             fields["labels"] = labels
         if parent_key:
@@ -295,6 +312,22 @@ class JiraClient:
             params={"query": query},
         )
 
+    async def get_fields(self) -> list[dict[str, Any]]:
+        """GET /rest/api/3/field"""
+        return await self._request("GET", "/rest/api/3/field")
+
+    async def get_epic_name_field_id(self) -> str | None:
+        """Fetch and cache the custom field ID for 'Epic Name'."""
+        if self._epic_name_field_id is not None:
+            return self._epic_name_field_id
+
+        fields = await self.get_fields()
+        for f in fields:
+            if f.get("name", "").lower() == "epic name":
+                self._epic_name_field_id = f["id"]
+                return self._epic_name_field_id
+
+        return None
 
 # ---------------------------------------------------------------------------
 # Helpers

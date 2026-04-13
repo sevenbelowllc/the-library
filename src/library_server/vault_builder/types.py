@@ -56,6 +56,7 @@ class BuildResult:
     graphify_message: str = ""
     duration_seconds: float = 0.0
     manifest_path: str = ""
+    config_warnings: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def any_succeeded(self) -> bool:

@@ -67,6 +67,15 @@ class VaultBuildOrchestrator:
         self.output_vault = output_vault
         self.mode = mode
 
+    def validate_all(self, extractors: list) -> dict[str, list[str]]:
+        """Run validate_config() on each extractor. Returns {name: [errors]} for any with errors."""
+        issues: dict[str, list[str]] = {}
+        for ext in extractors:
+            errors = ext.validate_config()
+            if errors:
+                issues[ext.name] = errors
+        return issues
+
     async def build(
         self,
         sources: list[str] | None = None,
@@ -91,6 +100,9 @@ class VaultBuildOrchestrator:
         if not extractors:
             return BuildResult(status="failed", duration_seconds=time.monotonic() - start)
 
+        # Pre-build validation gate — surface config errors before touching anything
+        config_errors = self.validate_all(extractors)
+
         # Run all extractors in parallel
         tasks = [ext.extract(raw_dir / ext.output_subdir) for ext in extractors]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -110,25 +122,34 @@ class VaultBuildOrchestrator:
         total_duration = time.monotonic() - start
         writer.write_manifest(extract_results, total_duration)
 
-        # Graphify gate
+        # Graphify quality gate — require at least one code or document source to succeed
         any_succeeded = any(r.success for r in extract_results)
         all_failed = all(not r.success for r in extract_results)
+        code_sources_succeeded = any(
+            r.success for r in extract_results
+            if r.source_name in ("axon_bridge",)
+        )
         graphify_status = "skipped"
         graphify_message = ""
 
-        if any_succeeded and self.graphify_runner.config.get("enabled", False):
-            graphify_out = self.output_vault / "graphify-out"
-            wiki_dir = self.output_vault / "wiki"
-            graphify_result = await self.graphify_runner.build(
-                raw_dir=raw_dir, output_dir=graphify_out, wiki_dir=wiki_dir,
-            )
-            graphify_status = graphify_result.get("status", "error")
-            graphify_message = graphify_result.get("message", "")
+        graphify_enabled = self.graphify_runner.config.get("enabled", False)
+        if graphify_enabled:
+            if all_failed:
+                graphify_status = "skipped"
+                graphify_message = "All extractors failed — Graphify skipped."
+            else:
+                graphify_out = self.output_vault / "graphify-out"
+                wiki_dir = self.output_vault / "wiki"
+                graphify_result = await self.graphify_runner.build(
+                    raw_dir=raw_dir, output_dir=graphify_out, wiki_dir=wiki_dir,
+                )
+                graphify_status = graphify_result.get("status", "error")
+                graphify_message = graphify_result.get("message", "")
 
         # Determine overall status
         if all_failed:
             status = "failed"
-        elif any(not r.success for r in extract_results):
+        elif any(not r.success for r in extract_results) or config_errors:
             status = "completed_with_warnings"
         else:
             status = "completed"
@@ -138,6 +159,7 @@ class VaultBuildOrchestrator:
             graphify_status=graphify_status, graphify_message=graphify_message,
             duration_seconds=time.monotonic() - start,
             manifest_path=str(raw_dir / "_build-manifest.md"),
+            config_warnings=config_errors,
         )
 
     def _write_obsidian_config(self) -> None:
@@ -166,10 +188,13 @@ class VaultBuildOrchestrator:
             if isinstance(result, Exception):
                 surveys.append({"source": extractors[i].name, "error": str(result)})
             else:
-                surveys.append({
+                entry: dict = {
                     "source": result.source_name, "file_count": result.file_count,
                     "total_size_bytes": result.total_size_bytes, "health": result.health,
-                })
+                }
+                if result.structure_summary:
+                    entry["detail"] = result.structure_summary
+                surveys.append(entry)
         return surveys
 
     async def preview(self, sources: list[str] | None = None) -> list[dict]:
