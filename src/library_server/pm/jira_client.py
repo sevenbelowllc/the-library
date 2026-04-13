@@ -1,0 +1,299 @@
+"""JiraClient — standalone Jira REST API client using Basic Auth.
+
+Replaces MCP-mediated Atlassian integration with direct HTTP calls.
+All other layers (adapter, MCP tools, vault builder) import from here.
+"""
+
+from __future__ import annotations
+
+import base64
+import os
+from typing import Any
+
+import httpx
+
+
+class JiraApiError(Exception):
+    """Raised when the Jira API returns a non-2xx status code."""
+
+    def __init__(self, status_code: int, message: str, endpoint: str) -> None:
+        self.status_code = status_code
+        self.message = message
+        self.endpoint = endpoint
+        super().__init__(f"Jira API {status_code} on {endpoint}: {message}")
+
+
+class JiraClient:
+    """Async Jira REST API v3 client with Basic Auth."""
+
+    def __init__(self, site_url: str, timeout: float = 15.0) -> None:
+        email = os.environ.get("JIRA_EMAIL")
+        token = os.environ.get("JIRA_API_TOKEN")
+        if not email:
+            raise ValueError("JIRA_EMAIL environment variable is required")
+        if not token:
+            raise ValueError("JIRA_API_TOKEN environment variable is required")
+
+        self._site_url = site_url.rstrip("/")
+        self._timeout = timeout
+        creds = base64.b64encode(f"{email}:{token}".encode()).decode()
+        self._auth_header = f"Basic {creds}"
+
+    # ------------------------------------------------------------------
+    # Internal request helper
+    # ------------------------------------------------------------------
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> Any:
+        """Make an authenticated request to the Jira REST API."""
+        url = f"{self._site_url}{path}"
+        headers = {
+            "Authorization": self._auth_header,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=self._timeout) as http:
+            resp = await http.request(method, url, headers=headers, params=params, json=json)
+
+        if resp.status_code == 204:
+            return None
+        if not (200 <= resp.status_code < 300):
+            try:
+                body = resp.json()
+                msg = body.get("errorMessages", [resp.text])
+                message = "; ".join(msg) if isinstance(msg, list) else str(msg)
+            except Exception:
+                message = resp.text
+            raise JiraApiError(
+                status_code=resp.status_code,
+                message=message,
+                endpoint=path,
+            )
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Project methods
+    # ------------------------------------------------------------------
+
+    async def create_project(
+        self,
+        name: str,
+        key: str,
+        project_type_key: str = "software",
+        lead_account_id: str = "",
+        description: str = "",
+    ) -> dict[str, Any]:
+        """POST /rest/api/3/project"""
+        return await self._request(
+            "POST",
+            "/rest/api/3/project",
+            json={
+                "name": name,
+                "key": key,
+                "projectTypeKey": project_type_key,
+                "leadAccountId": lead_account_id,
+                "description": description,
+            },
+        )
+
+    async def list_projects(
+        self,
+        max_results: int = 50,
+        start_at: int = 0,
+    ) -> dict[str, Any]:
+        """GET /rest/api/3/project/search"""
+        return await self._request(
+            "GET",
+            "/rest/api/3/project/search",
+            params={"maxResults": max_results, "startAt": start_at},
+        )
+
+    async def get_project(self, project_key: str) -> dict[str, Any]:
+        """GET /rest/api/3/project/{key}"""
+        return await self._request("GET", f"/rest/api/3/project/{project_key}")
+
+    async def update_project(self, project_key: str, **fields: Any) -> dict[str, Any]:
+        """PUT /rest/api/3/project/{key} — filters out None values."""
+        payload = {k: v for k, v in fields.items() if v is not None}
+        return await self._request(
+            "PUT",
+            f"/rest/api/3/project/{project_key}",
+            json=payload,
+        )
+
+    # ------------------------------------------------------------------
+    # Issue methods
+    # ------------------------------------------------------------------
+
+    async def create_issue(
+        self,
+        project_key: str,
+        issue_type: str,
+        summary: str,
+        description: str = "",
+        labels: list[str] | None = None,
+        parent_key: str = "",
+        assignee_id: str = "",
+    ) -> dict[str, Any]:
+        """POST /rest/api/3/issue — description uses ADF format."""
+        fields: dict[str, Any] = {
+            "project": {"key": project_key},
+            "issuetype": {"name": issue_type},
+            "summary": summary,
+            "description": _to_adf(description),
+        }
+        if labels:
+            fields["labels"] = labels
+        if parent_key:
+            fields["parent"] = {"key": parent_key}
+        if assignee_id:
+            fields["assignee"] = {"accountId": assignee_id}
+        return await self._request("POST", "/rest/api/3/issue", json={"fields": fields})
+
+    async def get_issue(
+        self,
+        issue_key: str,
+        fields: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /rest/api/3/issue/{key}"""
+        if fields is None:
+            fields = "summary,status,issuetype,priority,labels,assignee,description"
+        return await self._request(
+            "GET",
+            f"/rest/api/3/issue/{issue_key}",
+            params={"fields": fields},
+        )
+
+    async def update_issue(
+        self,
+        issue_key: str,
+        fields: dict[str, Any] | None = None,
+    ) -> Any:
+        """PUT /rest/api/3/issue/{key}"""
+        return await self._request(
+            "PUT",
+            f"/rest/api/3/issue/{issue_key}",
+            json={"fields": fields or {}},
+        )
+
+    async def search_issues(
+        self,
+        jql: str,
+        fields: str | None = None,
+        max_results: int = 50,
+        start_at: int = 0,
+    ) -> dict[str, Any]:
+        """GET /rest/api/3/search"""
+        if fields is None:
+            fields = "summary,status,issuetype,priority,labels,assignee"
+        return await self._request(
+            "GET",
+            "/rest/api/3/search",
+            params={
+                "jql": jql,
+                "fields": fields,
+                "maxResults": max_results,
+                "startAt": start_at,
+            },
+        )
+
+    async def assign_issue(self, issue_key: str, account_id: str) -> Any:
+        """PUT /rest/api/3/issue/{key}/assignee"""
+        return await self._request(
+            "PUT",
+            f"/rest/api/3/issue/{issue_key}/assignee",
+            json={"accountId": account_id},
+        )
+
+    # ------------------------------------------------------------------
+    # Transition methods
+    # ------------------------------------------------------------------
+
+    async def get_transitions(self, issue_key: str) -> dict[str, Any]:
+        """GET /rest/api/3/issue/{key}/transitions"""
+        return await self._request("GET", f"/rest/api/3/issue/{issue_key}/transitions")
+
+    async def transition_issue(self, issue_key: str, transition_id: str) -> Any:
+        """POST /rest/api/3/issue/{key}/transitions"""
+        return await self._request(
+            "POST",
+            f"/rest/api/3/issue/{issue_key}/transitions",
+            json={"transition": {"id": transition_id}},
+        )
+
+    # ------------------------------------------------------------------
+    # Comment methods
+    # ------------------------------------------------------------------
+
+    async def add_comment(self, issue_key: str, body: str) -> dict[str, Any]:
+        """POST /rest/api/3/issue/{key}/comment — body uses ADF format."""
+        return await self._request(
+            "POST",
+            f"/rest/api/3/issue/{issue_key}/comment",
+            json={"body": _to_adf(body)},
+        )
+
+    # ------------------------------------------------------------------
+    # Link methods
+    # ------------------------------------------------------------------
+
+    async def create_issue_link(
+        self,
+        type_name: str,
+        inward_key: str,
+        outward_key: str,
+    ) -> Any:
+        """POST /rest/api/3/issueLink"""
+        return await self._request(
+            "POST",
+            "/rest/api/3/issueLink",
+            json={
+                "type": {"name": type_name},
+                "inwardIssue": {"key": inward_key},
+                "outwardIssue": {"key": outward_key},
+            },
+        )
+
+    async def get_link_types(self) -> dict[str, Any]:
+        """GET /rest/api/3/issueLinkType"""
+        return await self._request("GET", "/rest/api/3/issueLinkType")
+
+    # ------------------------------------------------------------------
+    # User methods
+    # ------------------------------------------------------------------
+
+    async def get_myself(self) -> dict[str, Any]:
+        """GET /rest/api/3/myself"""
+        return await self._request("GET", "/rest/api/3/myself")
+
+    async def find_users(self, query: str) -> list[dict[str, Any]]:
+        """GET /rest/api/3/user/search"""
+        return await self._request(
+            "GET",
+            "/rest/api/3/user/search",
+            params={"query": query},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _to_adf(text: str) -> dict[str, Any]:
+    """Convert plain text to Atlassian Document Format (ADF)."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}],
+            },
+        ],
+    }
