@@ -199,6 +199,77 @@ async def library_pm_query(project_key: str, status: str = "", labels: str = "")
     }
 
 
+@mcp.tool(name="library_pm_create_project")
+async def library_pm_create_project(
+    name: str, key: str, description: str = "", project_type_key: str = "software",
+) -> dict:
+    """Create a Jira project. Requires admin access."""
+    adapter = _get_pm_adapter()
+    result = await adapter.create_project(name, key, description)
+    return {"project_key": result.project_key, "name": result.name, "url": result.url}
+
+
+@mcp.tool(name="library_pm_list_projects")
+async def library_pm_list_projects() -> dict:
+    """List all visible projects."""
+    adapter = _get_pm_adapter()
+    results = await adapter.list_projects()
+    return {
+        "count": len(results),
+        "projects": [
+            {"key": p.project_key, "name": p.name, "description": p.description}
+            for p in results
+        ],
+    }
+
+
+@mcp.tool(name="library_pm_get_project")
+async def library_pm_get_project(project_key: str) -> dict:
+    """Get project details."""
+    adapter = _get_pm_adapter()
+    result = await adapter.get_project(project_key)
+    return {
+        "project_key": result.project_key, "name": result.name,
+        "description": result.description, "lead": result.lead, "url": result.url,
+    }
+
+
+@mcp.tool(name="library_pm_update_project")
+async def library_pm_update_project(
+    project_key: str, name: str = "", description: str = "",
+) -> dict:
+    """Update project name or description."""
+    adapter = _get_pm_adapter()
+    result = await adapter.update_project(project_key, name, description)
+    return {"project_key": result.project_key, "name": result.name, "url": result.url}
+
+
+@mcp.tool(name="library_pm_assign_task")
+async def library_pm_assign_task(task_id: str, account_id: str) -> dict:
+    """Assign a task to a user by account ID."""
+    adapter = _get_pm_adapter()
+    result = await adapter.assign_task(task_id, account_id)
+    return {"task_id": result.task_id, "status": result.status.value}
+
+
+@mcp.tool(name="library_pm_link_issues")
+async def library_pm_link_issues(
+    type_name: str, inward_key: str, outward_key: str,
+) -> dict:
+    """Link two issues (e.g., 'Blocks', 'Relates')."""
+    adapter = _get_pm_adapter()
+    await adapter.link_issues(type_name, inward_key, outward_key)
+    return {"status": "linked", "type": type_name, "inward": inward_key, "outward": outward_key}
+
+
+@mcp.tool(name="library_pm_get_link_types")
+async def library_pm_get_link_types() -> dict:
+    """List available issue link types."""
+    adapter = _get_pm_adapter()
+    types = await adapter.get_link_types()
+    return {"types": types}
+
+
 def _get_pm_adapter() -> "PMAdapter":
     """Get the configured PM adapter."""
     from library_server.pm.adapter import PMAdapter
