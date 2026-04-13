@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import os
 import time
 from pathlib import Path
 from typing import Any
 
-import httpx
-
+from library_server.pm.jira_client import JiraClient
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.output import OutputWriter
 from library_server.vault_builder.types import SurveyResult, PreviewResult, ExtractResult
@@ -41,28 +39,20 @@ class JiraExtractor(BaseExtractor):
             errors.append("Missing env var: JIRA_EMAIL")
         return errors
 
-    def _build_auth_headers(self) -> dict[str, str]:
-        """Build Basic Auth headers from env vars or config."""
-        email = os.environ.get("JIRA_EMAIL", "")
-        token = os.environ.get("JIRA_API_TOKEN", "")
-        headers: dict[str, str] = {"Accept": "application/json"}
-        if email and token:
-            credentials = base64.b64encode(f"{email}:{token}".encode()).decode()
-            headers["Authorization"] = f"Basic {credentials}"
-        return headers
+    def _get_client(self) -> JiraClient:
+        """Get a JiraClient for the configured instance."""
+        site_url = f"https://{self.config.get('instance', '')}"
+        return JiraClient(site_url=site_url)
 
     async def _fetch_issues(self, project: str) -> list[dict[str, Any]]:
-        """Fetch all issues for a project. Override in tests with mock data."""
-        site_url = self.config.get("site_url", "").rstrip("/")
-        url = f"{site_url}/rest/api/3/search"
-        headers = self._build_auth_headers()
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                url, params={"jql": f"project = {project}", "maxResults": 100},
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json().get("issues", [])
+        """Fetch all issues for a project via JiraClient."""
+        client = self._get_client()
+        result = await client.search_issues(
+            jql=f"project = {project}",
+            fields=["summary", "description", "issuetype", "status", "assignee", "labels", "issuelinks", "comment"],
+            max_results=100,
+        )
+        return result.get("issues", [])
 
     async def survey(self) -> SurveyResult:
         total_count = 0
