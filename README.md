@@ -1,6 +1,17 @@
-# The Library
+<p align="center">
+  <img src="assets/the-library-banner.png" alt="The Library" width="800" />
+</p>
 
-Open-source meta-system for AI-assisted project management. Session continuity, knowledge management, and PM tracking through a Claude Code skill suite backed by an MCP server.
+<p align="center">
+  <strong>Open-source meta-system for AI-assisted project management.</strong><br/>
+  Session continuity, knowledge management, and PM tracking through a Claude Code skill suite backed by an MCP server.
+</p>
+
+<p align="center">
+  <a href="https://github.com/sevenbelowllc/the-library"><img src="https://img.shields.io/github/license/sevenbelowllc/the-library" alt="License" /></a>
+  <a href="https://pypi.org/project/the-library/"><img src="https://img.shields.io/pypi/v/the-library" alt="PyPI" /></a>
+  <a href="https://pypi.org/project/the-library/"><img src="https://img.shields.io/pypi/pyversions/the-library" alt="Python" /></a>
+</p>
 
 ## What It Does
 
@@ -137,3 +148,11 @@ Full specification: [MEMORY-MANAGEMENT.md](../library-reading-room/specs/MEMORY-
 ## License
 
 MIT - SevenBelow LLC
+
+---
+
+<p align="center">
+  <a href="https://sevenbelow.com">
+    <img src="assets/sevenbelow-wordmark.png" alt="SevenBelow" width="200" />
+  </a>
+</p>
