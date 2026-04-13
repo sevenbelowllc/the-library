@@ -158,3 +158,128 @@ def test_prune_dry_run_no_changes(tmp_path: Path):
     assert result["pruned_count"] == 0
     assert len(result["candidates"]) == 1
     assert stale_file.exists()
+
+
+# --- Edge cases for _parse_frontmatter in scan.py ---
+
+def test_scan_skips_files_without_frontmatter(tmp_path: Path):
+    """scan_memories should skip .md files that have no YAML frontmatter."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "plain.md").write_text("Just plain markdown, no frontmatter.\n")
+
+    result = scan_memories(str(mem), stale_threshold_days=30)
+    assert result["total_count"] == 0
+    assert result["entries"] == []
+
+
+def test_scan_skips_malformed_frontmatter(tmp_path: Path):
+    """scan_memories should skip files with unclosed frontmatter."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "broken.md").write_text("---\nname: Broken\n")  # no closing ---
+
+    result = scan_memories(str(mem), stale_threshold_days=30)
+    assert result["total_count"] == 0
+
+
+def test_scan_handles_yaml_error(tmp_path: Path):
+    """scan_memories should skip files with invalid YAML in frontmatter."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "bad_yaml.md").write_text("---\n: [invalid yaml\n---\nContent\n")
+
+    result = scan_memories(str(mem), stale_threshold_days=30)
+    assert result["total_count"] == 0
+
+
+def test_scan_handles_empty_frontmatter(tmp_path: Path):
+    """scan_memories should skip files with empty frontmatter (--- followed by ---)."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "empty_fm.md").write_text("---\n---\nContent only\n")
+
+    result = scan_memories(str(mem), stale_threshold_days=30)
+    assert result["total_count"] == 0
+
+
+# --- Edge cases for aggregate.py ---
+
+def test_aggregate_word_overlap(tmp_path: Path):
+    """aggregate should detect word overlap > 50% as related."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "a.md").write_text(
+        "---\nname: Library Config Setup\ndescription: Setup\ntype: project\n---\nContent\n"
+    )
+    (mem / "b.md").write_text(
+        "---\nname: Library Config Details\ndescription: Details\ntype: project\n---\nContent\n"
+    )
+
+    result = aggregate_memories(str(mem), dry_run=True)
+    # "Library Config Setup" vs "Library Config Details" → 2/3 overlap > 0.5
+    assert len(result["suggestions"]) >= 1
+
+
+def test_aggregate_no_overlap(tmp_path: Path):
+    """aggregate should NOT flag memories with < 50% word overlap."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "a.md").write_text(
+        "---\nname: Alpha Beta Gamma Delta\ndescription: One\ntype: project\n---\nContent\n"
+    )
+    (mem / "b.md").write_text(
+        "---\nname: Epsilon Zeta Eta Theta\ndescription: Two\ntype: project\n---\nContent\n"
+    )
+
+    result = aggregate_memories(str(mem), dry_run=True)
+    assert len(result["suggestions"]) == 0
+
+
+def test_aggregate_skips_no_frontmatter(tmp_path: Path):
+    """aggregate should skip files without frontmatter."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "plain.md").write_text("No frontmatter here.\n")
+
+    result = aggregate_memories(str(mem), dry_run=True)
+    assert len(result["suggestions"]) == 0
+
+
+def test_aggregate_different_types_not_merged(tmp_path: Path):
+    """aggregate should not suggest merging memories of different types."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "a.md").write_text(
+        "---\nname: Project Alpha\ndescription: A\ntype: project\n---\nContent\n"
+    )
+    (mem / "b.md").write_text(
+        "---\nname: Project Alpha\ndescription: A\ntype: feedback\n---\nContent\n"
+    )
+
+    result = aggregate_memories(str(mem), dry_run=True)
+    assert len(result["suggestions"]) == 0
+
+
+def test_aggregate_applied_flag(tmp_path: Path):
+    """aggregate with dry_run=False and suggestions should set applied=True."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+    (mem / "a.md").write_text(
+        "---\nname: Same Thing\ndescription: A\ntype: project\n---\nContent\n"
+    )
+    (mem / "b.md").write_text(
+        "---\nname: Same Thing Updated\ndescription: B\ntype: project\n---\nContent\n"
+    )
+
+    result = aggregate_memories(str(mem), dry_run=False)
+    assert result["applied"] is True

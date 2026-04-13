@@ -53,8 +53,8 @@ class JiraExtractor(BaseExtractor):
 
     async def _fetch_issues(self, project: str) -> list[dict[str, Any]]:
         """Fetch all issues for a project. Override in tests with mock data."""
-        cloud_id = self.config.get("cloud_id", "")
-        url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/search"
+        site_url = self.config.get("site_url", "").rstrip("/")
+        url = f"{site_url}/rest/api/3/search"
         headers = self._build_auth_headers()
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
