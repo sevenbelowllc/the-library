@@ -12,6 +12,7 @@ except ImportError:
 from library_server.pm.adapter import PMAdapter
 from library_server.types import (
     EpicResult,
+    ProjectResult,
     ProjectState,
     TaskResult,
     TaskStatus,
@@ -204,3 +205,40 @@ class LinearAdapter(PMAdapter):
             )
             for s in result["data"]["workflowStates"]["nodes"]
         ]
+
+    async def create_project(
+        self,
+        name: str,
+        key: str,
+        description: str = "",
+        lead_account_id: str = "",
+    ) -> ProjectResult:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def list_projects(self) -> list[ProjectResult]:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def get_project(self, project_key: str) -> ProjectResult:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def update_project(
+        self,
+        project_key: str,
+        name: str = "",
+        description: str = "",
+    ) -> ProjectResult:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def assign_task(self, task_id: str, account_id: str) -> TaskResult:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def link_issues(
+        self,
+        type_name: str,
+        inward_key: str,
+        outward_key: str,
+    ) -> None:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def get_link_types(self) -> list[dict]:
+        raise NotImplementedError("Not supported by Linear adapter")

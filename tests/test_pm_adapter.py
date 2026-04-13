@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -12,58 +12,295 @@ from library_server.pm.linear import LinearAdapter
 from library_server.types import TaskStatus
 
 
-class TestJiraAdapter:
-    """Tests for Jira adapter — uses mocked MCP calls."""
+# ---------------------------------------------------------------------------
+# Jira adapter tests — mock JiraClient methods directly
+# ---------------------------------------------------------------------------
 
-    def test_implements_interface(self):
+
+class TestJiraAdapter:
+    """Tests for Jira adapter — mocks JiraClient methods."""
+
+    def test_implements_interface(self, monkeypatch):
         """JiraAdapter should implement PMAdapter."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         assert isinstance(adapter, PMAdapter)
 
     @pytest.mark.asyncio
-    async def test_create_task_returns_task_result(self, mocker):
-        """create_task should return a TaskResult with correct fields."""
+    async def test_create_task(self, monkeypatch):
+        """create_task should call client.create_issue and return TaskResult."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.create_issue = AsyncMock(return_value={
+            "key": "PROJ-123",
+            "fields": {"summary": "Test task", "status": {"name": "To Do"}, "labels": ["core"]},
+            "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-123",
+        })
 
-        # Mock the MCP call
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={
-                "key": "PROJ-123",
-                "fields": {"summary": "Test task", "status": {"name": "To Do"}},
-                "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-123",
-            },
-        )
-
-        result = await adapter.create_task(
-            project_key="PROJ",
-            summary="Test task",
-            description="Test description",
-            labels=["core"],
-        )
-
+        result = await adapter.create_task("PROJ", "Test task", "desc", labels=["core"])
         assert result.task_id == "PROJ-123"
         assert result.summary == "Test task"
         assert result.project_key == "PROJ"
+        adapter.client.create_issue.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_query_tasks_returns_list(self, mocker):
-        """query_tasks should return a list of TaskResults."""
+    async def test_create_epic(self, monkeypatch):
+        """create_epic should return an EpicResult."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.create_issue = AsyncMock(return_value={
+            "key": "PROJ-E1",
+            "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-E1",
+        })
 
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={
-                "issues": [
-                    {"key": "PROJ-1", "fields": {"summary": "Task 1", "status": {"name": "To Do"}}},
-                    {"key": "PROJ-2", "fields": {"summary": "Task 2", "status": {"name": "In Progress"}}},
-                ],
-            },
-        )
+        result = await adapter.create_epic("PROJ", "My Epic", "Epic desc")
+        assert result.epic_id == "PROJ-E1"
+        assert result.project_key == "PROJ"
+        assert result.summary == "My Epic"
+
+    @pytest.mark.asyncio
+    async def test_update_task_with_comment(self, monkeypatch):
+        """update_task should add a comment when provided."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.add_comment = AsyncMock(return_value={})
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "Open"}, "labels": []},
+        })
+
+        result = await adapter.update_task("PROJ-1", comment="Progress note")
+        adapter.client.add_comment.assert_called_once_with("PROJ-1", "Progress note")
+        assert result.task_id == "PROJ-1"
+
+    @pytest.mark.asyncio
+    async def test_update_task_with_transition(self, monkeypatch):
+        """update_task should find and execute the right transition."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_transitions = AsyncMock(return_value={
+            "transitions": [
+                {"id": "11", "name": "To Do"},
+                {"id": "21", "name": "In Progress"},
+                {"id": "31", "name": "Done"},
+            ],
+        })
+        adapter.client.transition_issue = AsyncMock(return_value=None)
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "Done"}, "labels": []},
+        })
+
+        result = await adapter.update_task("PROJ-1", status="Done")
+        adapter.client.transition_issue.assert_called_once_with("PROJ-1", "31")
+        assert result.status == TaskStatus.DONE
+
+    @pytest.mark.asyncio
+    async def test_update_task_transition_not_found(self, monkeypatch):
+        """update_task should still return result when transition name doesn't match."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_transitions = AsyncMock(return_value={
+            "transitions": [{"id": "11", "name": "To Do"}],
+        })
+        adapter.client.transition_issue = AsyncMock()
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "To Do"}, "labels": []},
+        })
+
+        result = await adapter.update_task("PROJ-1", status="Nonexistent")
+        adapter.client.transition_issue.assert_not_called()
+        assert result.task_id == "PROJ-1"
+
+    @pytest.mark.asyncio
+    async def test_query_tasks(self, monkeypatch):
+        """query_tasks should return a list of TaskResults."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.search_issues = AsyncMock(return_value={
+            "issues": [
+                {"key": "PROJ-1", "fields": {"summary": "Task 1", "status": {"name": "To Do"}, "labels": []}},
+                {"key": "PROJ-2", "fields": {"summary": "Task 2", "status": {"name": "In Progress"}, "labels": []}},
+            ],
+        })
 
         results = await adapter.query_tasks("PROJ")
         assert len(results) == 2
         assert results[0].task_id == "PROJ-1"
+
+    @pytest.mark.asyncio
+    async def test_query_tasks_with_filters(self, monkeypatch):
+        """query_tasks should build JQL with status and label filters."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.search_issues = AsyncMock(return_value={
+            "issues": [
+                {"key": "PROJ-1", "fields": {"summary": "Bug", "status": {"name": "Open"}, "labels": ["bug"]}},
+            ],
+        })
+
+        results = await adapter.query_tasks("PROJ", {"status": "Open", "labels": ["bug", "urgent"]})
+        assert len(results) == 1
+        jql = adapter.client.search_issues.call_args[0][0]
+        assert "status = 'Open'" in jql
+        assert "labels in (bug,urgent)" in jql
+
+    @pytest.mark.asyncio
+    async def test_sync_state(self, monkeypatch):
+        """sync_state should categorize tasks by status."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.search_issues = AsyncMock(return_value={
+            "issues": [
+                {"key": "PROJ-1", "fields": {"summary": "Open task", "status": {"name": "Open"}, "labels": []}},
+                {"key": "PROJ-2", "fields": {"summary": "Done task", "status": {"name": "Done"}, "labels": []}},
+                {"key": "PROJ-3", "fields": {"summary": "Blocked", "status": {"name": "Blocked"}, "labels": []}},
+            ],
+        })
+
+        state = await adapter.sync_state("PROJ")
+        assert state.project_key == "PROJ"
+        assert len(state.open_tasks) == 1
+        assert len(state.recently_closed) == 1
+        assert len(state.blocked_tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_get_transitions(self, monkeypatch):
+        """get_transitions should map Jira transitions to Transition objects."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_transitions = AsyncMock(return_value={
+            "transitions": [
+                {"id": "11", "name": "To Do", "to": {"name": "To Do"}},
+                {"id": "21", "name": "In Progress", "to": {"name": "In Progress"}},
+                {"id": "31", "name": "Done", "to": {"name": "Done"}},
+            ],
+        })
+
+        transitions = await adapter.get_transitions("PROJ-1")
+        assert len(transitions) == 3
+        assert transitions[0].transition_id == "11"
+        assert transitions[0].to_status == TaskStatus.OPEN
+        assert transitions[2].to_status == TaskStatus.DONE
+
+    @pytest.mark.asyncio
+    async def test_create_project_auto_lead(self, monkeypatch):
+        """create_project should auto-fetch lead_account_id via get_myself."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_myself = AsyncMock(return_value={"accountId": "abc-123"})
+        adapter.client.create_project = AsyncMock(return_value={
+            "id": "10001",
+            "key": "NEW",
+            "self": "https://test.atlassian.net/rest/api/3/project/10001",
+        })
+
+        result = await adapter.create_project("New Project", "NEW", description="desc")
+        adapter.client.get_myself.assert_called_once()
+        adapter.client.create_project.assert_called_once_with(
+            name="New Project",
+            key="NEW",
+            description="desc",
+            lead_account_id="abc-123",
+        )
+        assert result.project_key == "NEW"
+        assert result.lead == "abc-123"
+        assert result.name == "New Project"
+
+    @pytest.mark.asyncio
+    async def test_list_projects(self, monkeypatch):
+        """list_projects should return list of ProjectResult."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.list_projects = AsyncMock(return_value={
+            "values": [
+                {"id": "1", "key": "PROJ", "name": "Project", "description": "", "lead": {"accountId": "lead-1"}, "self": ""},
+                {"id": "2", "key": "OTH", "name": "Other", "description": "desc", "lead": None, "self": ""},
+            ],
+        })
+
+        results = await adapter.list_projects()
+        assert len(results) == 2
+        assert results[0].project_key == "PROJ"
+        assert results[0].lead == "lead-1"
+        assert results[1].lead == ""
+
+    @pytest.mark.asyncio
+    async def test_get_project(self, monkeypatch):
+        """get_project should return a ProjectResult."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_project = AsyncMock(return_value={
+            "id": "1", "key": "PROJ", "name": "Project", "description": "desc",
+            "lead": {"accountId": "lead-1"}, "self": "https://test.atlassian.net/rest/api/3/project/1",
+        })
+
+        result = await adapter.get_project("PROJ")
+        assert result.project_key == "PROJ"
+        assert result.name == "Project"
+        assert result.lead == "lead-1"
+
+    @pytest.mark.asyncio
+    async def test_assign_task(self, monkeypatch):
+        """assign_task should call assign_issue and return updated TaskResult."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.assign_issue = AsyncMock(return_value=None)
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "Open"}, "labels": []},
+        })
+
+        result = await adapter.assign_task("PROJ-1", "user-abc")
+        adapter.client.assign_issue.assert_called_once_with("PROJ-1", "user-abc")
+        assert result.task_id == "PROJ-1"
+
+    @pytest.mark.asyncio
+    async def test_link_issues(self, monkeypatch):
+        """link_issues should call create_issue_link."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.create_issue_link = AsyncMock(return_value=None)
+
+        await adapter.link_issues("Blocks", "PROJ-1", "PROJ-2")
+        adapter.client.create_issue_link.assert_called_once_with("Blocks", "PROJ-1", "PROJ-2")
+
+    @pytest.mark.asyncio
+    async def test_get_link_types(self, monkeypatch):
+        """get_link_types should return list of dicts."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_link_types = AsyncMock(return_value={
+            "issueLinkTypes": [
+                {"id": "1", "name": "Blocks", "inward": "is blocked by", "outward": "blocks"},
+            ],
+        })
+
+        result = await adapter.get_link_types()
+        assert len(result) == 1
+        assert result[0]["name"] == "Blocks"
+
+
+# ---------------------------------------------------------------------------
+# Linear adapter tests — uses mocked HTTP calls
+# ---------------------------------------------------------------------------
 
 
 class TestLinearAdapter:
@@ -104,151 +341,6 @@ class TestLinearAdapter:
 
         assert result.task_id == "PROJ-42"
         assert result.summary == "Test task"
-
-
-# --- Extended Jira tests ---
-
-class TestJiraAdapterExtended:
-    """Extended Jira adapter tests for uncovered methods."""
-
-    @pytest.mark.asyncio
-    async def test_call_mcp_raises(self):
-        """_call_mcp should raise NotImplementedError."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        with pytest.raises(NotImplementedError, match="MCP calls are made"):
-            await adapter._call_mcp("test", {})
-
-    @pytest.mark.asyncio
-    async def test_create_epic(self, mocker):
-        """create_epic should return an EpicResult."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={
-                "key": "PROJ-E1",
-                "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-E1",
-            },
-        )
-        result = await adapter.create_epic("PROJ", "My Epic", "Epic desc")
-        assert result.epic_id == "PROJ-E1"
-        assert result.project_key == "PROJ"
-        assert result.summary == "My Epic"
-        adapter._call_mcp.assert_called_once_with("createJiraIssue", {
-            "projectKey": "PROJ",
-            "issueType": "Epic",
-            "summary": "My Epic",
-            "description": "Epic desc",
-        })
-
-    @pytest.mark.asyncio
-    async def test_update_task_with_comment(self, mocker):
-        """update_task should add a comment when provided."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        call_log = []
-
-        async def mock_mcp(tool_name, params):
-            call_log.append(tool_name)
-            if tool_name == "getJiraIssue":
-                return {"key": "PROJ-1", "fields": {"summary": "Task", "status": {"name": "Open"}}}
-            return {}
-
-        mocker.patch.object(adapter, "_call_mcp", side_effect=mock_mcp)
-        result = await adapter.update_task("PROJ-1", comment="Progress note")
-        assert "addCommentToJiraIssue" in call_log
-        assert "getJiraIssue" in call_log
-        assert result.task_id == "PROJ-1"
-
-    @pytest.mark.asyncio
-    async def test_update_task_with_status_transition(self, mocker):
-        """update_task should find and execute the right transition."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        call_log = []
-
-        async def mock_mcp(tool_name, params):
-            call_log.append(tool_name)
-            if tool_name == "getTransitionsForJiraIssue":
-                return {"transitions": [
-                    {"id": "11", "name": "To Do"},
-                    {"id": "21", "name": "In Progress"},
-                    {"id": "31", "name": "Done"},
-                ]}
-            if tool_name == "getJiraIssue":
-                return {"key": "PROJ-1", "fields": {"summary": "Task", "status": {"name": "Done"}}}
-            return {}
-
-        mocker.patch.object(adapter, "_call_mcp", side_effect=mock_mcp)
-        result = await adapter.update_task("PROJ-1", status="Done")
-        assert "getTransitionsForJiraIssue" in call_log
-        assert "transitionJiraIssue" in call_log
-        assert result.status == TaskStatus.DONE
-
-    @pytest.mark.asyncio
-    async def test_update_task_status_not_found(self, mocker):
-        """update_task should still return result when transition name doesn't match."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-
-        async def mock_mcp(tool_name, params):
-            if tool_name == "getTransitionsForJiraIssue":
-                return {"transitions": [{"id": "11", "name": "To Do"}]}
-            if tool_name == "getJiraIssue":
-                return {"key": "PROJ-1", "fields": {"summary": "Task", "status": {"name": "To Do"}}}
-            return {}
-
-        mocker.patch.object(adapter, "_call_mcp", side_effect=mock_mcp)
-        result = await adapter.update_task("PROJ-1", status="Nonexistent")
-        assert result.task_id == "PROJ-1"
-
-    @pytest.mark.asyncio
-    async def test_query_tasks_with_filters(self, mocker):
-        """query_tasks should build JQL with status and label filters."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={"issues": [
-                {"key": "PROJ-1", "fields": {"summary": "Bug", "status": {"name": "Open"}, "labels": ["bug"]}},
-            ]},
-        )
-        results = await adapter.query_tasks("PROJ", {"status": "Open", "labels": ["bug", "urgent"]})
-        assert len(results) == 1
-        jql = adapter._call_mcp.call_args[0][1]["jql"]
-        assert "status = 'Open'" in jql
-        assert "labels in (bug,urgent)" in jql
-
-    @pytest.mark.asyncio
-    async def test_sync_state(self, mocker):
-        """sync_state should categorize tasks by status."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={"issues": [
-                {"key": "PROJ-1", "fields": {"summary": "Open task", "status": {"name": "Open"}}},
-                {"key": "PROJ-2", "fields": {"summary": "Done task", "status": {"name": "Done"}}},
-                {"key": "PROJ-3", "fields": {"summary": "Blocked", "status": {"name": "Blocked"}}},
-            ]},
-        )
-        state = await adapter.sync_state("PROJ")
-        assert state.project_key == "PROJ"
-        assert len(state.open_tasks) == 1
-        assert len(state.recently_closed) == 1
-        assert len(state.blocked_tasks) == 1
-
-    @pytest.mark.asyncio
-    async def test_get_transitions(self, mocker):
-        """get_transitions should map Jira transitions to Transition objects."""
-        adapter = JiraAdapter(site_url="https://test.atlassian.net")
-        mocker.patch.object(
-            adapter, "_call_mcp",
-            return_value={"transitions": [
-                {"id": "11", "name": "To Do", "to": {"name": "To Do"}},
-                {"id": "21", "name": "In Progress", "to": {"name": "In Progress"}},
-                {"id": "31", "name": "Done", "to": {"name": "Done"}},
-            ]},
-        )
-        transitions = await adapter.get_transitions("PROJ-1")
-        assert len(transitions) == 3
-        assert transitions[0].transition_id == "11"
-        assert transitions[0].to_status == TaskStatus.OPEN
-        assert transitions[2].to_status == TaskStatus.DONE
 
 
 # --- Extended Linear tests ---
@@ -450,3 +542,31 @@ class TestLinearAdapterExtended:
 
         await adapter._graphql("query { test }")
         adapter._client.post.assert_called_once_with("", json={"query": "query { test }"})
+
+    @pytest.mark.asyncio
+    async def test_create_project_not_supported(self):
+        """create_project should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.create_project("Proj", "PRJ")
+
+    @pytest.mark.asyncio
+    async def test_list_projects_not_supported(self):
+        """list_projects should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.list_projects()
+
+    @pytest.mark.asyncio
+    async def test_assign_task_not_supported(self):
+        """assign_task should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.assign_task("PROJ-1", "user-123")
+
+    @pytest.mark.asyncio
+    async def test_link_issues_not_supported(self):
+        """link_issues should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.link_issues("Blocks", "PROJ-1", "PROJ-2")

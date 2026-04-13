@@ -1,12 +1,12 @@
-"""Jira PM adapter — wraps Atlassian MCP tools."""
+"""Jira PM adapter — wraps JiraClient for direct REST API calls."""
 
 from __future__ import annotations
 
-from typing import Any
-
 from library_server.pm.adapter import PMAdapter
+from library_server.pm.jira_client import JiraClient
 from library_server.types import (
     EpicResult,
+    ProjectResult,
     ProjectState,
     TaskResult,
     TaskStatus,
@@ -24,25 +24,11 @@ STATUS_MAP = {
 
 
 class JiraAdapter(PMAdapter):
-    """Jira implementation using Atlassian MCP tools.
-
-    In Claude Code, MCP tools are called by the LLM agent.
-    This adapter structures the calls and parses responses.
-    """
+    """Jira implementation using JiraClient direct REST API calls."""
 
     def __init__(self, site_url: str = ""):
         self.site_url = site_url
-
-    async def _call_mcp(self, tool_name: str, params: dict) -> dict:
-        """Placeholder for MCP tool invocation.
-
-        In production, this is called by the Claude Code agent via MCP.
-        For testing, this method is mocked.
-        """
-        raise NotImplementedError(
-            "MCP calls are made by the Claude Code agent. "
-            "This adapter structures requests and parses responses."
-        )
+        self.client = JiraClient(site_url=site_url)
 
     async def create_task(
         self,
@@ -51,13 +37,13 @@ class JiraAdapter(PMAdapter):
         description: str,
         labels: list[str] | None = None,
     ) -> TaskResult:
-        result = await self._call_mcp("createJiraIssue", {
-            "projectKey": project_key,
-            "issueType": "Task",
-            "summary": summary,
-            "description": description,
-            "labels": labels or [],
-        })
+        result = await self.client.create_issue(
+            project_key=project_key,
+            issue_type="Task",
+            summary=summary,
+            description=description,
+            labels=labels,
+        )
         return _parse_issue(result, project_key)
 
     async def create_epic(
@@ -66,12 +52,12 @@ class JiraAdapter(PMAdapter):
         summary: str,
         description: str,
     ) -> EpicResult:
-        result = await self._call_mcp("createJiraIssue", {
-            "projectKey": project_key,
-            "issueType": "Epic",
-            "summary": summary,
-            "description": description,
-        })
+        result = await self.client.create_issue(
+            project_key=project_key,
+            issue_type="Epic",
+            summary=summary,
+            description=description,
+        )
         return EpicResult(
             epic_id=result["key"],
             project_key=project_key,
@@ -86,22 +72,14 @@ class JiraAdapter(PMAdapter):
         comment: str | None = None,
     ) -> TaskResult:
         if comment:
-            await self._call_mcp("addCommentToJiraIssue", {
-                "issueIdOrKey": task_id,
-                "body": comment,
-            })
+            await self.client.add_comment(task_id, comment)
         if status:
-            transitions = await self._call_mcp("getTransitionsForJiraIssue", {
-                "issueIdOrKey": task_id,
-            })
-            for t in transitions.get("transitions", []):
+            trans_data = await self.client.get_transitions(task_id)
+            for t in trans_data.get("transitions", []):
                 if t["name"].lower() == status.lower():
-                    await self._call_mcp("transitionJiraIssue", {
-                        "issueIdOrKey": task_id,
-                        "transitionId": t["id"],
-                    })
+                    await self.client.transition_issue(task_id, t["id"])
                     break
-        issue = await self._call_mcp("getJiraIssue", {"issueIdOrKey": task_id})
+        issue = await self.client.get_issue(task_id)
         project_key = task_id.split("-")[0]
         return _parse_issue(issue, project_key)
 
@@ -116,7 +94,7 @@ class JiraAdapter(PMAdapter):
                 jql += f" AND status = '{filters['status']}'"
             if filters.get("labels"):
                 jql += f" AND labels in ({','.join(filters['labels'])})"
-        result = await self._call_mcp("searchJiraIssuesUsingJql", {"jql": jql})
+        result = await self.client.search_issues(jql)
         return [_parse_issue(issue, project_key) for issue in result.get("issues", [])]
 
     async def sync_state(self, project_key: str) -> ProjectState:
@@ -125,15 +103,13 @@ class JiraAdapter(PMAdapter):
             project_key=project_key,
             project_name=project_key,
             open_tasks=[t for t in all_tasks if t.status == TaskStatus.OPEN],
-            stale_tasks=[],  # Would need date comparison
+            stale_tasks=[],
             blocked_tasks=[t for t in all_tasks if t.status == TaskStatus.BLOCKED],
             recently_closed=[t for t in all_tasks if t.status == TaskStatus.DONE],
         )
 
     async def get_transitions(self, task_id: str) -> list[Transition]:
-        result = await self._call_mcp("getTransitionsForJiraIssue", {
-            "issueIdOrKey": task_id,
-        })
+        result = await self.client.get_transitions(task_id)
         return [
             Transition(
                 transition_id=t["id"],
@@ -142,6 +118,88 @@ class JiraAdapter(PMAdapter):
             )
             for t in result.get("transitions", [])
         ]
+
+    async def create_project(
+        self,
+        name: str,
+        key: str,
+        description: str = "",
+        lead_account_id: str = "",
+    ) -> ProjectResult:
+        if not lead_account_id:
+            me = await self.client.get_myself()
+            lead_account_id = me["accountId"]
+        result = await self.client.create_project(
+            name=name,
+            key=key,
+            description=description,
+            lead_account_id=lead_account_id,
+        )
+        return ProjectResult(
+            project_id=str(result.get("id", "")),
+            project_key=result.get("key", key),
+            name=name,
+            description=description,
+            lead=lead_account_id,
+            url=result.get("self", ""),
+        )
+
+    async def list_projects(self) -> list[ProjectResult]:
+        result = await self.client.list_projects()
+        return [
+            ProjectResult(
+                project_id=str(p.get("id", "")),
+                project_key=p.get("key", ""),
+                name=p.get("name", ""),
+                description=p.get("description", ""),
+                lead=p.get("lead", {}).get("accountId", "") if p.get("lead") else "",
+                url=p.get("self", ""),
+            )
+            for p in result.get("values", [])
+        ]
+
+    async def get_project(self, project_key: str) -> ProjectResult:
+        p = await self.client.get_project(project_key)
+        return ProjectResult(
+            project_id=str(p.get("id", "")),
+            project_key=p.get("key", project_key),
+            name=p.get("name", ""),
+            description=p.get("description", ""),
+            lead=p.get("lead", {}).get("accountId", "") if p.get("lead") else "",
+            url=p.get("self", ""),
+        )
+
+    async def update_project(
+        self,
+        project_key: str,
+        name: str = "",
+        description: str = "",
+    ) -> ProjectResult:
+        fields = {}
+        if name:
+            fields["name"] = name
+        if description:
+            fields["description"] = description
+        await self.client.update_project(project_key, **fields)
+        return await self.get_project(project_key)
+
+    async def assign_task(self, task_id: str, account_id: str) -> TaskResult:
+        await self.client.assign_issue(task_id, account_id)
+        issue = await self.client.get_issue(task_id)
+        project_key = task_id.split("-")[0]
+        return _parse_issue(issue, project_key)
+
+    async def link_issues(
+        self,
+        type_name: str,
+        inward_key: str,
+        outward_key: str,
+    ) -> None:
+        await self.client.create_issue_link(type_name, inward_key, outward_key)
+
+    async def get_link_types(self) -> list[dict]:
+        result = await self.client.get_link_types()
+        return result.get("issueLinkTypes", [])
 
 
 def _parse_issue(data: dict, project_key: str) -> TaskResult:
