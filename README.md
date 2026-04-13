@@ -80,13 +80,13 @@ The Reading Room is where your project's "books" live — canonical specs, imple
 
 ## MCP Server
 
-The Library runs as an MCP server exposing 20 tools across 6 modules:
+The Library runs as an MCP server exposing 27 tools across 6 modules:
 
 | Module | Tools |
 |--------|-------|
 | Config | `library:config:get`, `library:config:set` |
 | Vault | `library:vault:init`, `library:vault:validate`, `library:vault:parse`, `library:vault:ingest` |
-| PM | `library:pm:create_task`, `library:pm:create_epic`, `library:pm:sync`, `library:pm:update`, `library:pm:query` |
+| PM | `library:pm:create_task`, `library:pm:create_epic`, `library:pm:sync`, `library:pm:update`, `library:pm:query`, `library:pm:create_project`, `library:pm:list_projects`, `library:pm:get_project`, `library:pm:update_project`, `library:pm:assign_task`, `library:pm:link_issues`, `library:pm:get_link_types` |
 | Memory | `library:memory:scan`, `library:memory:aggregate`, `library:memory:prune` |
 | Checkpoint | `library:checkpoint:write`, `library:checkpoint:read`, `library:checkpoint:list` |
 | Graph | `library:graph:rebuild`, `library:graph:query`, `library:graph:path` |
@@ -104,6 +104,16 @@ library validate
 # Auto-fix common issues
 library doctor
 ```
+
+## Documentation
+
+| Guide | Purpose |
+|-------|---------|
+| [Quickstart](docs/setup/quickstart.md) | Install, init, first run |
+| [Jira Setup](docs/setup/jira-setup.md) | API token, env vars, project setup |
+| [Linear Setup](docs/setup/linear-setup.md) | Linear integration (partial) |
+| [PM Integration](docs/guides/pm-integration.md) | End-to-end project & ticket management |
+| [Jira API Reference](docs/reference/jira-api.md) | REST endpoints, field mappings |
 
 ## Configuration
 
