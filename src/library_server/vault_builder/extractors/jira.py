@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -33,16 +35,31 @@ class JiraExtractor(BaseExtractor):
         errors: list[str] = []
         if not self.config.get("projects"):
             errors.append("Missing required config: projects")
+        if not os.environ.get("JIRA_API_TOKEN"):
+            errors.append("Missing env var: JIRA_API_TOKEN")
+        if not os.environ.get("JIRA_EMAIL"):
+            errors.append("Missing env var: JIRA_EMAIL")
         return errors
+
+    def _build_auth_headers(self) -> dict[str, str]:
+        """Build Basic Auth headers from env vars or config."""
+        email = os.environ.get("JIRA_EMAIL", "")
+        token = os.environ.get("JIRA_API_TOKEN", "")
+        headers: dict[str, str] = {"Accept": "application/json"}
+        if email and token:
+            credentials = base64.b64encode(f"{email}:{token}".encode()).decode()
+            headers["Authorization"] = f"Basic {credentials}"
+        return headers
 
     async def _fetch_issues(self, project: str) -> list[dict[str, Any]]:
         """Fetch all issues for a project. Override in tests with mock data."""
         cloud_id = self.config.get("cloud_id", "")
         url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/search"
-        async with httpx.AsyncClient() as client:
+        headers = self._build_auth_headers()
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 url, params={"jql": f"project = {project}", "maxResults": 100},
-                headers={"Accept": "application/json"},
+                headers=headers,
             )
             response.raise_for_status()
             return response.json().get("issues", [])

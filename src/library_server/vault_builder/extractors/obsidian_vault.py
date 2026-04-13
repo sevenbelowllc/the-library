@@ -79,7 +79,8 @@ class ObsidianVaultExtractor(BaseExtractor):
         total_size = sum(f.stat().st_size for f in files)
         return SurveyResult(
             source_name=self.name, file_count=len(files), total_size_bytes=total_size,
-            structure_summary=f"{len(files)} files from existing vault", health="disconnected",
+            structure_summary=f"{len(files)} files from existing vault",
+            health="connected" if files else "empty",
         )
 
     async def preview(self) -> PreviewResult:

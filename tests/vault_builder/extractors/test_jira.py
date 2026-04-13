@@ -48,11 +48,13 @@ def _parse_frontmatter(content: str) -> dict:
 
 
 @pytest.fixture
-def jira_extractor():
+def jira_extractor(monkeypatch):
+    monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
+    monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
     from library_server.vault_builder.extractors.jira import JiraExtractor
     return JiraExtractor(config={
         "enabled": True, "instance": "sevenbelow.atlassian.net",
-        "cloud_id": "test-cloud-id", "projects": ["DEIOCAP"], "auth": "mcp",
+        "cloud_id": "test-cloud-id", "projects": ["DEIOCAP"], "auth": "api_token",
     })
 
 
@@ -60,11 +62,23 @@ async def test_validate_config_valid(jira_extractor):
     assert jira_extractor.validate_config() == []
 
 
-async def test_validate_config_missing_projects():
+async def test_validate_config_missing_projects(monkeypatch):
+    monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
+    monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
     from library_server.vault_builder.extractors.jira import JiraExtractor
     ext = JiraExtractor(config={"enabled": True})
     errors = ext.validate_config()
     assert any("projects" in e for e in errors)
+
+
+async def test_validate_config_missing_env_vars(monkeypatch):
+    monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+    monkeypatch.delenv("JIRA_EMAIL", raising=False)
+    from library_server.vault_builder.extractors.jira import JiraExtractor
+    ext = JiraExtractor(config={"enabled": True, "projects": ["DEIOCAP"]})
+    errors = ext.validate_config()
+    assert any("JIRA_API_TOKEN" in e for e in errors)
+    assert any("JIRA_EMAIL" in e for e in errors)
 
 
 async def test_extract_writes_correct_files(jira_extractor, output_dir: Path):
