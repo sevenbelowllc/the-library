@@ -75,6 +75,9 @@ class JiraClient:
                 message=message,
                 endpoint=path,
             )
+        # Some endpoints (e.g. POST /issueLink) return 201 with no body
+        if not resp.content:
+            return None
         return resp.json()
 
     # ------------------------------------------------------------------
@@ -185,22 +188,34 @@ class JiraClient:
     async def search_issues(
         self,
         jql: str,
-        fields: str | None = None,
+        fields: str | list[str] | None = None,
         max_results: int = 50,
         start_at: int = 0,
+        next_page_token: str | None = None,
     ) -> dict[str, Any]:
-        """GET /rest/api/3/search"""
+        """POST /rest/api/3/search/jql — replaces deprecated GET /rest/api/3/search.
+
+        Pagination uses ``nextPageToken`` (returned in each response) rather
+        than the legacy ``startAt`` offset.  The ``start_at`` parameter is
+        kept for backward-compatibility but is ignored by this endpoint.
+        """
         if fields is None:
-            fields = "summary,status,issuetype,priority,labels,assignee"
+            fields_list = ["summary", "status", "issuetype", "priority", "labels", "assignee"]
+        elif isinstance(fields, str):
+            fields_list = [f.strip() for f in fields.split(",")]
+        else:
+            fields_list = fields
+        body: dict[str, Any] = {
+            "jql": jql,
+            "fields": fields_list,
+            "maxResults": max_results,
+        }
+        if next_page_token:
+            body["nextPageToken"] = next_page_token
         return await self._request(
-            "GET",
-            "/rest/api/3/search",
-            params={
-                "jql": jql,
-                "fields": fields,
-                "maxResults": max_results,
-                "startAt": start_at,
-            },
+            "POST",
+            "/rest/api/3/search/jql",
+            json=body,
         )
 
     async def assign_issue(self, issue_key: str, account_id: str) -> Any:

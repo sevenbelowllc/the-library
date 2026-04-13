@@ -5,7 +5,7 @@ writes context usage percentage to a state file, and prints a single
 formatted line to stdout for the terminal status bar.
 
 Output format:
-    LIB {used_pct}% | 5h:{five_hour}% 7d:{seven_day}% | CLAUDE.md: {lines}/200
+    {used_pct}% LIB | 5h:{five_hour}% 7d:{seven_day}% | CLAUDE.md: {lines}/200
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def format_status_line(data: dict, claude_md_lines: int) -> str:
     -------
     str
         Formatted status line, e.g.
-        ``LIB 23% | 5h:3% 7d:2% | CLAUDE.md: 185/200``
+        ``23% LIB | 5h:3% 7d:2% | CLAUDE.md: 185/200``
     """
     used_pct = int(data.get("context_window", {}).get("used_percentage", 0))
     rate_limits = data.get("rate_limits", {})
@@ -45,7 +45,7 @@ def format_status_line(data: dict, claude_md_lines: int) -> str:
     seven_day_str = f"{int(seven_day)}"
 
     return (
-        f"LIB {used_pct}% | "
+        f"{used_pct}% LIB | "
         f"5h:{five_hour_str}% 7d:{seven_day_str}% | "
         f"CLAUDE.md: {claude_md_lines}/200"
     )

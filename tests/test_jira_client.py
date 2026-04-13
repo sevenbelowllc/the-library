@@ -242,26 +242,44 @@ class TestIssueMethods:
     async def test_search_issues(self, client: JiraClient):
         with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
             mock_req.return_value = {"issues": [], "total": 0}
-            result = await client.search_issues("project = COS", max_results=20, start_at=10)
+            result = await client.search_issues("project = COS", max_results=20)
             mock_req.assert_called_once_with(
-                "GET",
-                "/rest/api/3/search",
-                params={
+                "POST",
+                "/rest/api/3/search/jql",
+                json={
                     "jql": "project = COS",
-                    "fields": "summary,status,issuetype,priority,labels,assignee",
+                    "fields": ["summary", "status", "issuetype", "priority", "labels", "assignee"],
                     "maxResults": 20,
-                    "startAt": 10,
                 },
             )
             assert result["total"] == 0
 
     @pytest.mark.asyncio
-    async def test_search_issues_custom_fields(self, client: JiraClient):
+    async def test_search_issues_with_page_token(self, client: JiraClient):
+        """nextPageToken is included when provided."""
         with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
             mock_req.return_value = {"issues": []}
-            await client.search_issues("project = COS", fields="summary")
-            params = mock_req.call_args[1]["params"]
-            assert params["fields"] == "summary"
+            await client.search_issues("project = COS", next_page_token="abc123")
+            body = mock_req.call_args[1]["json"]
+            assert body["nextPageToken"] == "abc123"
+
+    @pytest.mark.asyncio
+    async def test_search_issues_custom_fields_string(self, client: JiraClient):
+        """Comma-separated string fields are normalised to a list."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {"issues": []}
+            await client.search_issues("project = COS", fields="summary,status")
+            body = mock_req.call_args[1]["json"]
+            assert body["fields"] == ["summary", "status"]
+
+    @pytest.mark.asyncio
+    async def test_search_issues_custom_fields_list(self, client: JiraClient):
+        """List fields are passed through unchanged."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {"issues": []}
+            await client.search_issues("project = COS", fields=["summary"])
+            body = mock_req.call_args[1]["json"]
+            assert body["fields"] == ["summary"]
 
     @pytest.mark.asyncio
     async def test_assign_issue(self, client: JiraClient):
