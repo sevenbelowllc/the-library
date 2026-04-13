@@ -19,7 +19,7 @@ def get_config() -> LibraryConfig:
 
 # --- Config tools ---
 
-@mcp.tool(name="library:config:get")
+@mcp.tool(name="library_config_get")
 def library_config_get(section: str = "") -> dict:
     """Read current library configuration. Pass a section name (e.g. 'vault', 'pm') or empty for all."""
     config = get_config()
@@ -28,7 +28,7 @@ def library_config_get(section: str = "") -> dict:
     return config.to_dict()
 
 
-@mcp.tool(name="library:config:set")
+@mcp.tool(name="library_config_set")
 def library_config_set(section: str, key: str, value: str) -> dict:
     """Update a configuration value. Example: section='pm', key='provider', value='linear'."""
     config = get_config()
@@ -39,7 +39,7 @@ def library_config_set(section: str, key: str, value: str) -> dict:
 
 # --- Checkpoint tools ---
 
-@mcp.tool(name="library:checkpoint:write")
+@mcp.tool(name="library_checkpoint_write")
 def library_checkpoint_write(
     topic: str,
     status: str,
@@ -66,14 +66,14 @@ def library_checkpoint_write(
     return write_checkpoint(checkpoint_path, data)
 
 
-@mcp.tool(name="library:checkpoint:read")
+@mcp.tool(name="library_checkpoint_read")
 def library_checkpoint_read(checkpoint_path: str) -> dict:
     """Read and parse a checkpoint file. Returns structured session state."""
     from library_server.checkpoint.checkpoint import read_checkpoint
     return read_checkpoint(checkpoint_path)
 
 
-@mcp.tool(name="library:checkpoint:list")
+@mcp.tool(name="library_checkpoint_list")
 def library_checkpoint_list(checkpoint_dir: str = "") -> dict:
     """List all checkpoint files. Uses config path if no directory specified."""
     from library_server.checkpoint.checkpoint import list_checkpoints
@@ -84,7 +84,7 @@ def library_checkpoint_list(checkpoint_dir: str = "") -> dict:
 
 # --- Memory tools ---
 
-@mcp.tool(name="library:memory:scan")
+@mcp.tool(name="library_memory_scan")
 def library_memory_scan(memory_path: str = "", stale_threshold_days: int = 30) -> dict:
     """Scan memory files for staleness and metadata. Returns entries with stale flags."""
     from library_server.memory.scan import scan_memories
@@ -93,7 +93,7 @@ def library_memory_scan(memory_path: str = "", stale_threshold_days: int = 30) -
     return scan_memories(path, threshold)
 
 
-@mcp.tool(name="library:memory:aggregate")
+@mcp.tool(name="library_memory_aggregate")
 def library_memory_aggregate(memory_path: str = "", dry_run: bool = True) -> dict:
     """Find merge opportunities for related memories. Set dry_run=False to apply."""
     from library_server.memory.aggregate import aggregate_memories
@@ -101,7 +101,7 @@ def library_memory_aggregate(memory_path: str = "", dry_run: bool = True) -> dic
     return aggregate_memories(path, dry_run)
 
 
-@mcp.tool(name="library:memory:prune")
+@mcp.tool(name="library_memory_prune")
 def library_memory_prune(memory_path: str = "", stale_threshold_days: int = 30, dry_run: bool = True) -> dict:
     """Remove stale memory files. Set dry_run=False to delete. Updates MEMORY.md index."""
     from library_server.memory.prune import prune_stale
@@ -112,28 +112,28 @@ def library_memory_prune(memory_path: str = "", stale_threshold_days: int = 30, 
 
 # --- Vault tools ---
 
-@mcp.tool(name="library:vault:init")
+@mcp.tool(name="library_vault_init")
 def library_vault_init(vault_path: str) -> dict:
     """Bootstrap a new vault with Karpathy 3-layer structure (_schema/, sources/, wiki/, archive/)."""
     from library_server.vault.init import init_vault
     return init_vault(vault_path)
 
 
-@mcp.tool(name="library:vault:validate")
+@mcp.tool(name="library_vault_validate")
 def library_vault_validate(vault_path: str) -> dict:
     """Validate vault structure against schema. Returns {valid: bool, issues: list}."""
     from library_server.vault.validate import validate_vault
     return validate_vault(vault_path)
 
 
-@mcp.tool(name="library:vault:parse")
+@mcp.tool(name="library_vault_parse")
 def library_vault_parse(vault_path: str) -> dict:
     """Parse vault wiki articles. Returns tags ([VERIFY]/[CONFLICT]/[PLANNED]), frontmatter, headings."""
     from library_server.vault.parse import parse_vault
     return parse_vault(vault_path)
 
 
-@mcp.tool(name="library:vault:ingest")
+@mcp.tool(name="library_vault_ingest")
 def library_vault_ingest(vault_path: str, source_path: str, tier: str, category: str) -> dict:
     """Ingest a file or directory into vault sources/<tier>/<category>/. Updates kb.yaml."""
     from library_server.vault.ingest import ingest_source
@@ -142,7 +142,7 @@ def library_vault_ingest(vault_path: str, source_path: str, tier: str, category:
 
 # --- PM tools ---
 
-@mcp.tool(name="library:pm:create_task")
+@mcp.tool(name="library_pm_create_task")
 async def library_pm_create_task(
     project_key: str, summary: str, description: str, labels: str = ""
 ) -> dict:
@@ -153,7 +153,7 @@ async def library_pm_create_task(
     return {"task_id": result.task_id, "summary": result.summary, "url": result.url}
 
 
-@mcp.tool(name="library:pm:create_epic")
+@mcp.tool(name="library_pm_create_epic")
 async def library_pm_create_epic(project_key: str, summary: str, description: str) -> dict:
     """Create an epic in the configured PM tool."""
     adapter = _get_pm_adapter()
@@ -161,7 +161,7 @@ async def library_pm_create_epic(project_key: str, summary: str, description: st
     return {"epic_id": result.epic_id, "summary": result.summary, "url": result.url}
 
 
-@mcp.tool(name="library:pm:sync")
+@mcp.tool(name="library_pm_sync")
 async def library_pm_sync(project_key: str) -> dict:
     """Pull current state from PM tool. Returns open, stale, blocked, recently closed tasks."""
     adapter = _get_pm_adapter()
@@ -175,7 +175,7 @@ async def library_pm_sync(project_key: str) -> dict:
     }
 
 
-@mcp.tool(name="library:pm:update")
+@mcp.tool(name="library_pm_update")
 async def library_pm_update(task_id: str, status: str = "", comment: str = "") -> dict:
     """Update a task's status or add a comment."""
     adapter = _get_pm_adapter()
@@ -183,7 +183,7 @@ async def library_pm_update(task_id: str, status: str = "", comment: str = "") -
     return {"task_id": result.task_id, "status": result.status.value}
 
 
-@mcp.tool(name="library:pm:query")
+@mcp.tool(name="library_pm_query")
 async def library_pm_query(project_key: str, status: str = "", labels: str = "") -> dict:
     """Query tasks by filter. Returns matching tasks."""
     adapter = _get_pm_adapter()
@@ -218,7 +218,7 @@ def _get_pm_adapter() -> "PMAdapter":
 
 # --- Graph tools ---
 
-@mcp.tool(name="library:graph:rebuild")
+@mcp.tool(name="library_graph_rebuild")
 def library_graph_rebuild() -> dict:
     """Trigger Graphify to rebuild the knowledge graph from vault sources."""
     from library_server.graph.orchestrator import rebuild_graph
@@ -233,7 +233,7 @@ def library_graph_rebuild() -> dict:
     )
 
 
-@mcp.tool(name="library:graph:query")
+@mcp.tool(name="library_graph_query")
 def library_graph_query(query: str) -> dict:
     """Query the knowledge graph. Falls back gracefully if Graphify is disabled."""
     from library_server.graph.orchestrator import query_graph
@@ -246,7 +246,7 @@ def library_graph_query(query: str) -> dict:
     )
 
 
-@mcp.tool(name="library:graph:path")
+@mcp.tool(name="library_graph_path")
 def library_graph_path(node_a: str, node_b: str) -> dict:
     """Trace shortest path between two nodes in the knowledge graph."""
     from library_server.graph.orchestrator import trace_path
@@ -260,7 +260,7 @@ def library_graph_path(node_a: str, node_b: str) -> dict:
     )
 
 
-@mcp.tool(name="library:memory:health")
+@mcp.tool(name="library_memory_health")
 def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     """Get memory system health report — keyword accuracy, vault stats, CLAUDE.md lines."""
     from library_server.hooks.config_loader import load_hook_config
@@ -291,7 +291,7 @@ def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     }
 
 
-@mcp.tool(name="library:memory:learn")
+@mcp.tool(name="library_memory_learn")
 def library_memory_learn(vault_path: str = "") -> dict:
     """Analyze routing journal and propose keyword improvements."""
     from library_server.hooks.config_loader import load_hook_config
@@ -325,7 +325,7 @@ def library_memory_learn(vault_path: str = "") -> dict:
 
 # --- Vault Builder tools ---
 
-@mcp.tool(name="library:vault:builder:config")
+@mcp.tool(name="library_vault_builder_config")
 def library_vault_builder_config(section: str = "") -> dict:
     """Show current Vault Builder configuration and validation status."""
     from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
@@ -346,7 +346,7 @@ def library_vault_builder_config(section: str = "") -> dict:
     return result
 
 
-@mcp.tool(name="library:vault:builder:survey")
+@mcp.tool(name="library_vault_builder_survey")
 async def library_vault_builder_survey(sources: str = "") -> dict:
     """Survey all or specific vault builder sources. Returns file counts and health."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
@@ -359,7 +359,7 @@ async def library_vault_builder_survey(sources: str = "") -> dict:
     return {"vault_state": vault_state, "sources": surveys}
 
 
-@mcp.tool(name="library:vault:builder:preview")
+@mcp.tool(name="library_vault_builder_preview")
 async def library_vault_builder_preview(sources: str = "") -> dict:
     """Dry run — show what would be extracted without writing."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
@@ -368,7 +368,7 @@ async def library_vault_builder_preview(sources: str = "") -> dict:
     return {"sources": previews}
 
 
-@mcp.tool(name="library:vault:builder:build")
+@mcp.tool(name="library_vault_builder_build")
 async def library_vault_builder_build(sources: str = "", force: bool = False) -> dict:
     """Full parallel extraction + Graphify build. Pass force=True to overwrite existing vault."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
@@ -394,7 +394,7 @@ async def library_vault_builder_build(sources: str = "", force: bool = False) ->
     }
 
 
-@mcp.tool(name="library:vault:builder:extract")
+@mcp.tool(name="library_vault_builder_extract")
 async def library_vault_builder_extract(extractor: str, dry_run: bool = False) -> dict:
     """Run a single extractor by name. Set dry_run=True for preview only."""
     orch = _get_vault_orchestrator()

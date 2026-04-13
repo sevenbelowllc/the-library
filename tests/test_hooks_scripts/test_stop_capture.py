@@ -132,6 +132,27 @@ class TestProcessStop:
         parsed = parse_session_state(sessions_dir / "SESSION.md")
         assert any("app.py" in f for f in parsed.files_touched)
 
+    def test_preserves_doing_field(self, tmp_path: Path) -> None:
+        """process_stop must NOT overwrite the existing 'Doing' field in SESSION.md."""
+        from library_server.hooks.scripts.stop_capture import process_stop
+
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        make_session_file(sessions_dir)  # doing="Testing stop capture"
+        transcript = make_transcript(tmp_path)
+        context_usage_file = make_context_usage_file(tmp_path, usage=0.20)
+        journal = tmp_path / "journal.jsonl"
+
+        process_stop(
+            sessions_dir=sessions_dir,
+            transcript_path=transcript,
+            context_usage_path=context_usage_file,
+            journal_path=journal,
+        )
+
+        parsed = parse_session_state(sessions_dir / "SESSION.md")
+        assert parsed.doing == "Testing stop capture"
+
     def test_no_warning_at_low_usage(self, tmp_path: Path) -> None:
         """When context usage is below warn_pct, warning should be None."""
         from library_server.hooks.scripts.stop_capture import process_stop

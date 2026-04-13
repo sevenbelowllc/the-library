@@ -47,6 +47,7 @@ Changelog = "https://github.com/sevenbelowllc/the-library/blob/main/CHANGELOG.md
 
 [project.scripts]
 library = "library_server.cli:main"
+library-server = "library_server.server:main"
 
 [build-system]
 requires = ["hatchling"]

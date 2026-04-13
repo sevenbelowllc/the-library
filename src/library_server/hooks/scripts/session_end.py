@@ -74,8 +74,8 @@ def process_session_end(
             update_project_state_field(
                 project_state_file, "session_count", state.session_count + 1
             )
-        except Exception:
-            pass  # Non-fatal — archiving is the primary goal
+        except Exception as exc:
+            print(f"[library] session_end: failed to update PROJECT-STATE.md: {exc}", file=sys.stderr)
 
     return {"archived": True}
 

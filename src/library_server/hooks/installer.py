@@ -15,7 +15,18 @@ Usage::
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
+
+# Hook scripts that get deployed to the project's .claude/hooks/ directory
+_SCRIPT_NAMES = [
+    "pre_compact",
+    "prompt_scan",
+    "session_end",
+    "session_start",
+    "status_line",
+    "stop_capture",
+]
 
 
 def generate_hooks_config(project_dir: str = "$CLAUDE_PROJECT_DIR") -> dict:
@@ -129,11 +140,39 @@ def generate_hooks_config(project_dir: str = "$CLAUDE_PROJECT_DIR") -> dict:
     return config
 
 
+def _deploy_scripts(target_dir: Path) -> int:
+    """Copy hook scripts from the package into the target directory.
+
+    Parameters
+    ----------
+    target_dir:
+        Destination directory (e.g. ``<project>/.claude/hooks/``).
+
+    Returns
+    -------
+    int
+        Number of scripts deployed.
+    """
+    scripts_src = Path(__file__).parent / "scripts"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    deployed = 0
+    for name in _SCRIPT_NAMES:
+        src = scripts_src / f"{name}.py"
+        if src.is_file():
+            shutil.copy2(src, target_dir / f"{name}.py")
+            deployed += 1
+
+    return deployed
+
+
 def install_hooks(settings_path: Path) -> dict:
-    """Merge MMU hook configuration into a Claude Code ``settings.json`` file.
+    """Merge MMU hook configuration into a Claude Code ``settings.json`` file
+    and deploy the hook scripts to the project's ``.claude/hooks/`` directory.
 
     Reads existing settings (or starts from ``{}`` if the file does not
-    exist), merges the generated hooks config in, and writes the result back.
+    exist), merges the generated hooks config in, writes the result back,
+    then copies the hook scripts so the commands actually resolve.
     Existing top-level keys not related to hooks or statusLine are preserved.
 
     Parameters
@@ -144,9 +183,9 @@ def install_hooks(settings_path: Path) -> dict:
     Returns
     -------
     dict
-        ``{"status": "installed", "hooks_count": <int>}``
+        ``{"status": "installed", "hooks_count": <int>, "scripts_deployed": <int>}``
         where ``hooks_count`` is the number of top-level hook event types
-        installed.
+        installed and ``scripts_deployed`` is the number of script files copied.
     """
     # Load existing settings (may not exist yet)
     existing: dict = {}
@@ -172,5 +211,9 @@ def install_hooks(settings_path: Path) -> dict:
         json.dumps(merged, indent=2) + "\n", encoding="utf-8"
     )
 
+    # Deploy hook scripts to the project's .claude/hooks/ directory
+    hooks_dir = settings_path.parent / "hooks"
+    scripts_deployed = _deploy_scripts(hooks_dir)
+
     hooks_count = len(hooks_config["hooks"])
-    return {"status": "installed", "hooks_count": hooks_count}
+    return {"status": "installed", "hooks_count": hooks_count, "scripts_deployed": scripts_deployed}
