@@ -56,16 +56,36 @@ class JiraExtractor(BaseExtractor):
 
     async def survey(self) -> SurveyResult:
         total_count = 0
-        for project in self.config.get("projects", []):
+        project_keys = self.config.get("projects", [])
+        project_counts: dict[str, int] = {}
+        failed_projects: list[str] = []
+        for project in project_keys:
             try:
                 issues = await self._fetch_issues(project)
+                project_counts[project] = len(issues)
                 total_count += len(issues)
-            except Exception:
-                pass
+            except Exception as e:
+                project_counts[project] = 0
+                failed_projects.append(f"{project}: {e}")
+        project_detail = ", ".join(f"{k}({v})" for k, v in project_counts.items())
+        if failed_projects and len(failed_projects) == len(project_keys):
+            health = "error"
+            summary = f"All {len(project_keys)} project(s) unreachable — {failed_projects[0]}"
+        elif failed_projects:
+            health = "degraded"
+            summary = (
+                f"{total_count} issues from {len(project_keys) - len(failed_projects)} project(s); "
+                f"{len(failed_projects)} failed: {project_detail}"
+            )
+        elif total_count == 0:
+            health = "empty"
+            summary = f"0 issues across {len(project_keys)} projects: {project_detail}"
+        else:
+            health = "connected"
+            summary = f"{total_count} issues across {len(project_keys)} projects: {project_detail}"
         return SurveyResult(
             source_name=self.name, file_count=total_count, total_size_bytes=0,
-            structure_summary=f"{total_count} issues across {len(self.config.get('projects', []))} projects",
-            health="connected" if total_count > 0 else "empty",
+            structure_summary=summary, health=health,
         )
 
     async def preview(self) -> PreviewResult:
@@ -146,8 +166,12 @@ class JiraExtractor(BaseExtractor):
                 errors.append(f"Error fetching project {project}: {e}")
 
         duration = time.monotonic() - start
+        projects = self.config.get("projects", [])
+        # Treat as failure if every project errored (auth failure, network, etc.)
+        project_errors = [e for e in errors if e.startswith("Error fetching project")]
+        all_projects_failed = bool(projects) and len(project_errors) >= len(projects)
         return ExtractResult(
             source_name=self.name, files_written=files_written, files_skipped=[],
             errors=errors, duration_seconds=duration,
-            success=len(files_written) > 0,
+            success=len(files_written) > 0 and not all_projects_failed,
         )

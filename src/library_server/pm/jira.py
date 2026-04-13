@@ -52,11 +52,17 @@ class JiraAdapter(PMAdapter):
         summary: str,
         description: str,
     ) -> EpicResult:
+        epic_name_field_id = await self.client.get_epic_name_field_id()
+        custom_fields = {}
+        if epic_name_field_id:
+            custom_fields[epic_name_field_id] = summary
+
         result = await self.client.create_issue(
             project_key=project_key,
             issue_type="Epic",
             summary=summary,
             description=description,
+            custom_fields=custom_fields,
         )
         return EpicResult(
             epic_id=result["key"],
