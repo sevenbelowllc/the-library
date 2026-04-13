@@ -40,6 +40,16 @@ class EpicResult:
 
 
 @dataclass
+class ProjectResult:
+    project_id: str
+    project_key: str
+    name: str
+    description: str = ""
+    lead: str = ""
+    url: str = ""
+
+
+@dataclass
 class ProjectState:
     project_key: str
     project_name: str
