@@ -26,17 +26,11 @@ def test_full_lifecycle(tmp_path: Path):
         "reading_room": {
             "path": str(tmp_path / "reading-room"),
             "type": "directory",
-            "specs": "docs/specs",
-            "plans": "docs/plans",
-            "checkpoints": "docs/checkpoints",
         },
         "vault": {"path": str(tmp_path / "vault"), "schema_version": "karpathy-v1",
                    "compile_protocol": "CLAUDE.md", "compile_order": "kb.yaml"},
         "pm": {"provider": "none", "projects": []},
         "graphify": {"enabled": False},
-        "memory": {"path": str(tmp_path / "memory"), "index": "MEMORY.md",
-                    "max_index_lines": 200, "stale_threshold_days": 30},
-        "checkpoints": {"path": str(tmp_path / "checkpoints")},
     }
     config_path = tmp_path / "library-config.yaml"
     with open(config_path, "w") as f:
