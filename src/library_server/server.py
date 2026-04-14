@@ -201,11 +201,15 @@ async def library_pm_query(project_key: str, status: str = "", labels: str = "")
 
 @mcp.tool(name="library_pm_create_project")
 async def library_pm_create_project(
-    name: str, key: str, description: str = "", project_type_key: str = "software",
+    name: str, key: str, description: str = "", project_type_key: str = "software", workflow_scheme: str = "",
 ) -> dict:
     """Create a Jira project. Requires admin access."""
+    config = get_config()
+    default_scheme = config.get_section("pm").get("workflow_scheme", "SevenBelow Standard SDLC Workflow")
+    actual_scheme = workflow_scheme if workflow_scheme else default_scheme
+
     adapter = _get_pm_adapter()
-    result = await adapter.create_project(name, key, description)
+    result = await adapter.create_project(name, key, description, workflow_scheme=actual_scheme)
     return {"project_key": result.project_key, "name": result.name, "url": result.url}
 
 

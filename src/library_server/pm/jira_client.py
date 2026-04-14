@@ -144,6 +144,24 @@ class JiraClient:
             json=payload,
         )
 
+    async def assign_workflow_scheme(self, project_id: str, workflow_scheme_name: str) -> None:
+        """Assign an existing workflow scheme to a project."""
+        # 1. Look up the scheme ID by name
+        schemes_response = await self._request("GET", "/rest/api/3/workflowscheme")
+        scheme_id = None
+        available_schemes = [s.get("name") for s in schemes_response.get("values", [])]
+        for scheme in schemes_response.get("values", []):
+            if scheme.get("name", "").lower() == workflow_scheme_name.lower():
+                scheme_id = scheme.get("id")
+                break
+                
+        if not scheme_id:
+            raise ValueError(f"Workflow scheme '{workflow_scheme_name}' not found. Available schemes from Atlassian: {', '.join(str(s) for s in available_schemes)}")
+            
+        # 2. Assign the scheme to the project
+        payload = {"workflowSchemeId": scheme_id, "projectId": project_id}
+        await self._request("PUT", "/rest/api/3/workflowscheme/project", json=payload)
+
     # ------------------------------------------------------------------
     # Issue methods
     # ------------------------------------------------------------------

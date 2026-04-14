@@ -76,6 +76,7 @@ class PMAdapter(ABC):
         key: str,
         description: str = "",
         lead_account_id: str = "",
+        workflow_scheme: str = "",
     ) -> ProjectResult:
         ...
 
