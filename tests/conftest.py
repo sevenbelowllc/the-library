@@ -24,11 +24,7 @@ def sample_config(tmp_dir: Path) -> LibraryConfig:
         "reading_room": {
             "path": str(tmp_dir / "reading-room"),
             "type": "directory",
-            "specs": "docs/specs",
-            "plans": "docs/plans",
-            "checkpoints": "docs/checkpoints",
         },
-        "specs": {"path": str(tmp_dir / "specs"), "index": "INDEX.md", "format": "markdown"},
         "vault": {
             "path": str(tmp_dir / "vault"),
             "schema_version": "karpathy-v1",
@@ -43,16 +39,6 @@ def sample_config(tmp_dir: Path) -> LibraryConfig:
             "mode": "deep",
             "mcp_port": 3001,
             "auto_rebuild": True,
-        },
-        "memory": {
-            "path": str(tmp_dir / "memory"),
-            "index": "MEMORY.md",
-            "max_index_lines": 200,
-            "stale_threshold_days": 30,
-        },
-        "checkpoints": {
-            "path": str(tmp_dir / "checkpoints"),
-            "format": "YYYY-MM-DD-HH-MM-SS-<topic>-checkpoint.md",
         },
     }
     config_path = tmp_dir / "library-config.yaml"

@@ -35,14 +35,20 @@ from library_server.state.session_state import update_session_turn
 
 
 def _read_context_usage(context_usage_path: Path) -> float:
-    """Read context_usage float from a JSON state file.
+    """Read context_usage float from a state file.
 
-    Returns 0.0 if the file is missing or unreadable.
+    Accepts either a bare float (e.g. ``23.0``) or a JSON object
+    (e.g. ``{"context_usage": 23.0}``). Returns 0.0 if the file is
+    missing or unreadable.
     """
     if not context_usage_path.is_file():
         return 0.0
     try:
-        data = json.loads(context_usage_path.read_text(encoding="utf-8"))
+        raw = context_usage_path.read_text(encoding="utf-8").strip()
+        data = json.loads(raw)
+        if isinstance(data, (int, float)):
+            # Bare float written by status_line.py
+            return float(data) / 100.0  # stored as percentage, normalize to 0-1
         return float(data.get("context_usage", 0.0))
     except (json.JSONDecodeError, ValueError, TypeError):
         return 0.0
