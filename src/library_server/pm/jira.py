@@ -131,6 +131,7 @@ class JiraAdapter(PMAdapter):
         key: str,
         description: str = "",
         lead_account_id: str = "",
+        workflow_scheme: str = "",
     ) -> ProjectResult:
         if not lead_account_id:
             me = await self.client.get_myself()
@@ -141,6 +142,12 @@ class JiraAdapter(PMAdapter):
             description=description,
             lead_account_id=lead_account_id,
         )
+        
+        project_id = str(result.get("id", ""))
+        
+        if workflow_scheme and project_id:
+            await self.client.assign_workflow_scheme(project_id, workflow_scheme)
+
         return ProjectResult(
             project_id=str(result.get("id", "")),
             project_key=result.get("key", key),

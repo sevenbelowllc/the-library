@@ -30,6 +30,7 @@ vault:
 pm:
   provider: "none"                      # jira | linear | none
   # site_url: "https://yoursite.atlassian.net"  # Jira only
+  # workflow_scheme: "SevenBelow Standard SDLC Workflow" # Default workflow to assign for Jira Projects
   projects: []                          # list of {key, name} objects
   # Example:
   # projects:
