@@ -91,7 +91,7 @@ async def test_graphify_skipped_on_all_failures(tmp_path: Path):
     graphify = GraphifyRunner(config={"enabled": True})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
 
-    with patch.object(graphify, "build", new_callable=AsyncMock) as mock_build:
+    with patch.object(graphify, "build_from_vault", new_callable=AsyncMock) as mock_build:
         result = await orch.build()
         mock_build.assert_not_called()
     assert result.status == "failed"
@@ -260,7 +260,7 @@ async def test_build_runs_graphify_when_enabled(tmp_path: Path):
     graphify = GraphifyRunner(config={"enabled": True, "command": "graphify"})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
 
-    with patch.object(graphify, "build", new_callable=AsyncMock, return_value={"status": "success", "nodes": 10}) as mock_build:
+    with patch.object(graphify, "build_from_vault", new_callable=AsyncMock, return_value={"status": "success", "nodes": 10}) as mock_build:
         result = await orch.build()
         mock_build.assert_called_once()
 
@@ -437,7 +437,7 @@ async def test_graphify_skipped_when_no_extractors_succeed(tmp_path: Path):
     graphify = GraphifyRunner(config={"enabled": True, "command": "graphify"})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
 
-    with patch.object(graphify, "build", new_callable=AsyncMock) as mock_build:
+    with patch.object(graphify, "build_from_vault", new_callable=AsyncMock) as mock_build:
         result = await orch.build()
         mock_build.assert_not_called()
 
@@ -457,7 +457,7 @@ async def test_graphify_runs_when_any_extractor_succeeds(tmp_path: Path):
     graphify = GraphifyRunner(config={"enabled": True, "command": "graphify"})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
 
-    with patch.object(graphify, "build", new_callable=AsyncMock, return_value={"status": "success"}) as mock_build:
+    with patch.object(graphify, "build_from_vault", new_callable=AsyncMock, return_value={"status": "success"}) as mock_build:
         result = await orch.build()
         mock_build.assert_called_once()
 

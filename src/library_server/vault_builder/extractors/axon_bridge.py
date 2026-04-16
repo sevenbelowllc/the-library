@@ -232,11 +232,16 @@ class AxonBridgeExtractor(BaseExtractor):
         communities: list[dict], repo_path: str,
     ) -> list[str]:
         files_written: list[str] = []
+        slug_counts: dict[str, int] = {}
 
         for community in communities:
             community_name = community["name"]
             symbol_count = community.get("symbol_count", 0)
-            slug = re.sub(r"[^a-z0-9]+", "-", community_name.lower()).strip("-")
+            base_slug = re.sub(r"[^a-z0-9]+", "-", community_name.lower()).strip("-")
+            # Deduplicate slugs — append incrementing suffix for collisions
+            count = slug_counts.get(base_slug, 0)
+            slug_counts[base_slug] = count + 1
+            slug = f"{base_slug}-{count + 1}" if count > 0 else base_slug
 
             members = self._cypher_members(repo_path, community_name)
 
