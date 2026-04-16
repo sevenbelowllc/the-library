@@ -103,8 +103,10 @@ class TestProjectMethods:
                     "name": "New Project",
                     "key": "NEW",
                     "projectTypeKey": "software",
-                    "leadAccountId": "abc",
+                    "projectTemplateKey": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
                     "description": "desc",
+                    "assigneeType": "PROJECT_LEAD",
+                    "leadAccountId": "abc",
                 },
             )
             assert result["key"] == "NEW"

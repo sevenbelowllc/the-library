@@ -481,3 +481,171 @@ async def test_build_success_with_uncached_docs_includes_warning(runner, tmp_pat
     assert "message" in result
     assert "1 document" in result["message"]
     assert "/graphify" in result["message"]
+
+
+# --- build_from_vault: frontmatter-based graph building ---
+
+
+async def test_build_from_vault_disabled(disabled_runner, tmp_path: Path):
+    result = await disabled_runner.build_from_vault(
+        raw_dir=tmp_path / "raw", output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+    )
+    assert result["status"] == "disabled"
+
+
+async def test_build_from_vault_not_installed(runner, tmp_path: Path):
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", None):
+        result = await runner.build_from_vault(
+            raw_dir=tmp_path / "raw", output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+        )
+    assert result["status"] == "error"
+    assert "not installed" in result["message"]
+
+
+async def test_build_from_vault_parses_frontmatter(runner, tmp_path: Path):
+    """build_from_vault reads YAML frontmatter to create nodes and edges."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "glossary.md").write_text(
+        "---\ntitle: Glossary\nsource_type: spec\ndomain: compliance\n"
+        "trust: 1.0\ntags: [source/spec]\nrelated:\n  - '[[Domains]]'\n---\n\n# Glossary\n"
+    )
+    (raw_dir / "domains.md").write_text(
+        "---\ntitle: Domains\nsource_type: spec\ndomain: compliance\n"
+        "trust: 1.0\ntags: [source/spec]\nrelated: []\n---\n\n# Domains\n"
+    )
+
+    mock_graph = MagicMock()
+    mock_graph.number_of_nodes.return_value = 4  # 2 content + 1 domain node (shared)
+    mock_graph.number_of_edges.return_value = 3
+
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", return_value=mock_graph) as mock_build, \
+         patch("library_server.vault_builder.graphify_runner.cluster", return_value={0: ["a", "b"]}), \
+         patch("library_server.vault_builder.graphify_runner.score_all", return_value={0: 0.8}), \
+         patch("library_server.vault_builder.graphify_runner.god_nodes", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.surprising_connections", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.generate", return_value="# Report"), \
+         patch("library_server.vault_builder.graphify_runner.to_json"), \
+         patch("library_server.vault_builder.graphify_runner.to_html"), \
+         patch("library_server.vault_builder.graphify_runner.to_wiki", return_value=2):
+
+        result = await runner.build_from_vault(
+            raw_dir=raw_dir, output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+        )
+
+    assert result["status"] == "success"
+    # build_from_json should receive the parsed extraction
+    extraction = mock_build.call_args[0][0]
+    node_ids = {n["id"] for n in extraction["nodes"]}
+    assert "Glossary" in node_ids
+    assert "Domains" in node_ids
+    assert "domain:compliance" in node_ids
+    # Glossary should have a related_to edge to Domains
+    edge_targets = {(e["source"], e["target"], e["type"]) for e in extraction["edges"]}
+    assert ("Glossary", "Domains", "related_to") in edge_targets
+
+
+async def test_build_from_vault_empty_dir(runner, tmp_path: Path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+
+    result = await runner.build_from_vault(
+        raw_dir=raw_dir, output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+    )
+    assert result["status"] == "error"
+    assert "No frontmatter" in result["message"]
+
+
+async def test_build_from_vault_skips_manifest(runner, tmp_path: Path):
+    """Files starting with _ (like _build-manifest.md) should be skipped."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "_build-manifest.md").write_text(
+        "---\ntitle: Build Manifest\n---\n\n# Manifest\n"
+    )
+
+    result = await runner.build_from_vault(
+        raw_dir=raw_dir, output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+    )
+    assert result["status"] == "error"  # No valid nodes found
+
+
+async def test_build_from_vault_saves_artifacts(runner, tmp_path: Path):
+    """build_from_vault must save .graphify_extract.json and .graphify_analysis.json."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "test.md").write_text(
+        "---\ntitle: Test\nsource_type: spec\ndomain: general\ntrust: 1.0\n"
+        "tags: []\nrelated: []\n---\n\n# Test\n"
+    )
+    out_dir = tmp_path / "out"
+
+    mock_graph = MagicMock()
+    mock_graph.number_of_nodes.return_value = 2
+    mock_graph.number_of_edges.return_value = 1
+
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", return_value=mock_graph), \
+         patch("library_server.vault_builder.graphify_runner.cluster", return_value={0: ["a"]}), \
+         patch("library_server.vault_builder.graphify_runner.score_all", return_value={0: 1.0}), \
+         patch("library_server.vault_builder.graphify_runner.god_nodes", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.surprising_connections", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.generate", return_value="# Report"), \
+         patch("library_server.vault_builder.graphify_runner.to_json"), \
+         patch("library_server.vault_builder.graphify_runner.to_html"), \
+         patch("library_server.vault_builder.graphify_runner.to_wiki", return_value=1):
+
+        await runner.build_from_vault(raw_dir=raw_dir, output_dir=out_dir, wiki_dir=tmp_path / "wiki")
+
+    assert (out_dir / ".graphify_extract.json").exists()
+    assert (out_dir / ".graphify_analysis.json").exists()
+    assert (out_dir / "GRAPH_REPORT.md").exists()
+
+
+async def test_build_from_vault_exception_handling(runner, tmp_path: Path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "test.md").write_text(
+        "---\ntitle: Test\nsource_type: spec\ndomain: general\ntrust: 1.0\n"
+        "tags: []\nrelated: []\n---\n\n# Test\n"
+    )
+
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", side_effect=Exception("boom")):
+        result = await runner.build_from_vault(
+            raw_dir=raw_dir, output_dir=tmp_path / "out", wiki_dir=tmp_path / "wiki",
+        )
+    assert result["status"] == "error"
+    assert "boom" in result["message"]
+
+
+# --- _parse_vault_frontmatter ---
+
+
+def test_parse_vault_frontmatter_deduplicates_titles(runner, tmp_path: Path):
+    """Nodes with duplicate titles get disambiguated with parent dir prefix."""
+    raw_dir = tmp_path / "raw"
+    (raw_dir / "a").mkdir(parents=True)
+    (raw_dir / "b").mkdir(parents=True)
+    (raw_dir / "a" / "summary.md").write_text(
+        "---\ntitle: Summary\nsource_type: spec\ndomain: general\n"
+        "trust: 1.0\ntags: []\nrelated: []\n---\n\n# Summary A\n"
+    )
+    (raw_dir / "b" / "summary.md").write_text(
+        "---\ntitle: Summary\nsource_type: spec\ndomain: general\n"
+        "trust: 1.0\ntags: []\nrelated: []\n---\n\n# Summary B\n"
+    )
+
+    nodes, edges = runner._parse_vault_frontmatter(raw_dir)
+    node_ids = {n["id"] for n in nodes if n["type"] != "domain"}
+    # One should be "Summary", the other disambiguated
+    assert len(node_ids) == 2
+    assert "Summary" in node_ids
+
+
+def test_parse_vault_frontmatter_skips_no_frontmatter(runner, tmp_path: Path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "plain.md").write_text("# No frontmatter here\n\nJust body text.")
+
+    nodes, edges = runner._parse_vault_frontmatter(raw_dir)
+    content_nodes = [n for n in nodes if n["type"] != "domain"]
+    assert len(content_nodes) == 0

@@ -1,16 +1,24 @@
 """GraphifyRunner — triggers Graphify Python API to build knowledge graph and wiki.
 
-Uses detect() to find ALL file types (code, docs, papers, images, video),
-then routes code files through AST extraction and merges with any pre-existing
-semantic extraction results before building the graph.
+Two build paths:
+1. build() — full Graphify pipeline (detect → extract → build). Requires code files
+   or pre-cached semantic extraction for documents.
+2. build_from_vault() — reads YAML frontmatter from extracted vault files to build
+   the graph directly. No LLM calls needed — all structure is in the frontmatter.
+
+The vault builder uses path 2 since extractors already produce structured markdown
+with title, domain, tags, and related fields in YAML frontmatter.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 try:
     from graphify.detect import detect as graphify_detect
@@ -227,3 +235,185 @@ class GraphifyRunner:
 
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+    async def build_from_vault(
+        self,
+        raw_dir: Path,
+        output_dir: Path,
+        wiki_dir: Path,
+    ) -> dict[str, Any]:
+        """Build graph from YAML frontmatter in extracted vault files.
+
+        Reads title, domain, tags, and related fields from each .md file's
+        YAML frontmatter to create nodes and edges — no LLM extraction needed.
+        """
+        if not self.config.get("enabled", False):
+            return {"status": "disabled", "message": "Graphify is not enabled in config."}
+
+        if build_from_json is None:
+            return {
+                "status": "error",
+                "message": "Graphify is not installed. Run: pip install 'the-library[graphify]'",
+            }
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            nodes, edges = self._parse_vault_frontmatter(raw_dir)
+
+            if not nodes:
+                return {"status": "error", "message": f"No frontmatter nodes found in {raw_dir}"}
+
+            extraction = {
+                "nodes": nodes,
+                "edges": edges,
+                "hyperedges": [],
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
+            (output_dir / ".graphify_extract.json").write_text(json.dumps(extraction, indent=2))
+
+            graph = build_from_json(extraction)
+            communities = cluster(graph)
+            cohesion = score_all(graph, communities)
+            gods = god_nodes(graph)
+            surprises = surprising_connections(graph, communities)
+
+            report_md = generate(
+                graph, communities, cohesion,
+                community_labels={},
+                god_node_list=gods,
+                surprise_list=surprises,
+                detection_result={
+                    "total_files": len(nodes),
+                    "total_words": 0,
+                    "files": {},
+                },
+                token_cost={"input": 0, "output": 0},
+                root=str(raw_dir),
+            )
+            (output_dir / "GRAPH_REPORT.md").write_text(report_md)
+
+            to_json(graph, communities, str(output_dir / "graph.json"))
+
+            if graph.number_of_nodes() <= 5000:
+                to_html(graph, communities, str(output_dir / "graph.html"))
+
+            wiki_count = to_wiki(
+                graph, communities, wiki_dir, cohesion=cohesion, god_nodes_data=gods,
+            )
+
+            analysis = {
+                "communities": {str(k): v for k, v in communities.items()},
+                "cohesion": {str(k): v for k, v in cohesion.items()},
+                "gods": gods,
+                "surprises": surprises,
+            }
+            (output_dir / ".graphify_analysis.json").write_text(json.dumps(analysis, indent=2))
+
+            return {
+                "status": "success",
+                "nodes": graph.number_of_nodes(),
+                "edges": graph.number_of_edges(),
+                "communities": len(communities),
+                "wiki_articles": wiki_count,
+                "output_dir": str(output_dir),
+                "wiki_dir": str(wiki_dir),
+            }
+
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def _parse_vault_frontmatter(self, raw_dir: Path) -> tuple[list[dict], list[dict]]:
+        """Parse YAML frontmatter from all .md files in raw_dir into graph nodes and edges."""
+        nodes: list[dict] = []
+        edges: list[dict] = []
+        seen_ids: set[str] = set()
+
+        for md_file in sorted(raw_dir.rglob("*.md")):
+            if md_file.name.startswith("_"):
+                continue  # skip manifests
+
+            fm = self._read_frontmatter(md_file)
+            if not fm or "title" not in fm:
+                continue
+
+            node_id = fm["title"]
+            if node_id in seen_ids:
+                # Disambiguate with subdirectory
+                rel = md_file.relative_to(raw_dir)
+                node_id = f"{rel.parent.name}/{fm['title']}"
+            seen_ids.add(node_id)
+
+            rel_path = str(md_file.relative_to(raw_dir))
+            node: dict[str, Any] = {
+                "id": node_id,
+                "label": fm["title"],
+                "type": fm.get("source_type", "document"),
+                "source_file": rel_path,
+                "file_type": md_file.suffix.lstrip("."),
+                "properties": {
+                    "domain": fm.get("domain", "general"),
+                    "trust": fm.get("trust", 0.5),
+                    "file": rel_path,
+                    "extractor": fm.get("extractor", "unknown"),
+                },
+            }
+            if fm.get("tags"):
+                node["properties"]["tags"] = fm["tags"]
+            nodes.append(node)
+
+            # Build edges from the related field ([[target]] wikilinks)
+            for rel_ref in fm.get("related", []):
+                target = re.sub(r"\[\[|\]\]", "", rel_ref).strip()
+                if target:
+                    edges.append({
+                        "source": node_id,
+                        "target": target,
+                        "type": "related_to",
+                        "weight": 1.0,
+                    })
+
+            # Build edges from shared domain — nodes in the same domain are connected
+            domain = fm.get("domain", "general")
+            domain_node_id = f"domain:{domain}"
+            if domain_node_id not in seen_ids:
+                seen_ids.add(domain_node_id)
+                nodes.append({
+                    "id": domain_node_id,
+                    "label": domain,
+                    "type": "domain",
+                    "source_file": "",
+                    "file_type": "virtual",
+                    "properties": {"domain": domain},
+                })
+            edges.append({
+                "source": node_id,
+                "target": domain_node_id,
+                "type": "belongs_to_domain",
+                "weight": 0.5,
+            })
+
+        return nodes, edges
+
+    @staticmethod
+    def _read_frontmatter(path: Path) -> dict[str, Any] | None:
+        """Read YAML frontmatter from a markdown file."""
+        try:
+            text = path.read_text(errors="replace")
+        except OSError:
+            return None
+
+        if not text.startswith("---"):
+            return None
+
+        end = text.find("\n---", 3)
+        if end == -1:
+            return None
+
+        try:
+            return yaml.safe_load(text[4:end]) or {}
+        except yaml.YAMLError:
+            return None

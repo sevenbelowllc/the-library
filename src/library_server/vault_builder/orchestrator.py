@@ -140,7 +140,7 @@ class VaultBuildOrchestrator:
             else:
                 graphify_out = self.output_vault / "graphify-out"
                 wiki_dir = self.output_vault / "wiki"
-                graphify_result = await self.graphify_runner.build(
+                graphify_result = await self.graphify_runner.build_from_vault(
                     raw_dir=raw_dir, output_dir=graphify_out, wiki_dir=wiki_dir,
                 )
                 graphify_status = graphify_result.get("status", "error")

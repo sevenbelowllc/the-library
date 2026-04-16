@@ -411,3 +411,34 @@ def test_domain_detection_fallback():
     from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor
     ext = AxonBridgeExtractor(config={"enabled": True, "repos": []})
     assert ext._detect_domain("some random unmatched text") == "general"
+
+
+# ── Slug deduplication ───────────────────────────────────────────────────────
+
+async def test_duplicate_community_names_produce_unique_files(output_dir: Path):
+    """Communities with the same name must NOT overwrite each other on disk."""
+    from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor
+    from library_server.vault_builder.output import OutputWriter
+
+    # Simulate 3 communities all named "Services" (real axon output pattern)
+    communities = [
+        {"name": "Services", "symbol_count": 50},
+        {"name": "Services", "symbol_count": 30},
+        {"name": "Services", "symbol_count": 10},
+    ]
+
+    ext = AxonBridgeExtractor(config={"enabled": True, "repos": [
+        {"name": "test-repo", "path": "/tmp/fake", "language": "typescript"},
+    ]})
+    writer = OutputWriter(base_dir=output_dir.parent)
+
+    with patch.object(ext, "_cypher_members", return_value=[("fn1", "src/a.ts")]):
+        files = ext._write_axon_results(writer, output_dir, "test-repo", communities, "/tmp/fake")
+
+    # Should have 3 unique file paths, not 3 identical ones
+    assert len(files) == 3
+    assert len(set(files)) == 3, f"Duplicate filenames: {files}"
+
+    # Verify all 3 files actually exist on disk
+    for f in files:
+        assert (output_dir / f).exists(), f"File not written: {f}"
