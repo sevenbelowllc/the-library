@@ -37,3 +37,4 @@ library-config.yaml
 vault/
 graphify-out/
 .library/
+.axon/
