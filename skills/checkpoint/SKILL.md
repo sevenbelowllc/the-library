@@ -68,6 +68,26 @@ Report to user:
 
 Wait for user confirmation.
 
+## Resume from Checkpoint
+
+When invoked with "resume" intent or when starting a new session:
+
+### Step R1: List Checkpoints
+
+Call `library_checkpoint_list` to show recent checkpoints with dates and status.
+
+### Step R2: Select Checkpoint
+
+Present the list and let user pick one to load. If only one recent checkpoint exists, offer to load it directly.
+
+### Step R3: Load Checkpoint
+
+Call `library_checkpoint_read(path)` to display checkpoint content.
+
+### Step R4: Resume
+
+Resume from the checkpoint's "What's Next" section. Read referenced files and re-establish context before proceeding with the next actions.
+
 ## Quality Gates
 
 - **No vague actions.** "Continue working on X" is not valid. Be specific.
@@ -76,8 +96,16 @@ Wait for user confirmation.
 - **Absolute paths.** No ambiguous references.
 - **Decisions include rationale.** Not just "chose X" but "chose X because Y."
 
+## Token Budget
+
+**Weight:** Light-Medium
+**Estimated context cost:** ~800 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:checkpoint:write` — write structured checkpoint file
+- `library:checkpoint:list` — list recent checkpoints (for resume flow)
+- `library:checkpoint:read` — read a specific checkpoint (for resume flow)
 - `library:pm:update` — comment on PM tasks (if PM configured)
 - `library:pm:sync` — check for orphaned work (if PM configured)
