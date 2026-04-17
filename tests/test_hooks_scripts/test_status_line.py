@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 
 class TestFormatStatusLine:
@@ -217,3 +219,99 @@ class TestCountClaudeMdLines:
         result = count_claude_md_lines(current)
         assert isinstance(result, int)
         assert result >= 0
+
+    def test_handles_oserror_on_read(self, tmp_path: Path) -> None:
+        from library_server.hooks.scripts.status_line import count_claude_md_lines
+
+        claude_md = tmp_path / "CLAUDE.md"
+        claude_md.write_text("line1\nline2\n", encoding="utf-8")
+
+        with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
+            result = count_claude_md_lines(tmp_path)
+
+        assert result == 0
+
+    def test_stops_at_filesystem_root(self) -> None:
+        from library_server.hooks.scripts.status_line import count_claude_md_lines
+
+        # Starting from root should not loop forever; it terminates when
+        # parent == current (filesystem root).
+        result = count_claude_md_lines(Path("/"), _max_levels=50)
+        assert isinstance(result, int)
+        assert result >= 0
+
+
+class TestMain:
+    def test_main_with_valid_payload(self, tmp_path: Path) -> None:
+        from library_server.hooks.scripts.status_line import main
+
+        usage_file = tmp_path / "state" / "context_usage.txt"
+        payload = {
+            "cwd": str(tmp_path),
+            "usage_path": str(usage_file),
+            "context_window": {"used_percentage": 42},
+            "rate_limits": {
+                "five_hour": {"used_percentage": 10.0},
+                "seven_day": {"used_percentage": 5.0},
+            },
+        }
+
+        with patch("sys.stdin") as mock_stdin, patch("builtins.print") as mock_print:
+            mock_stdin.read.return_value = json.dumps(payload)
+            main()
+
+        assert usage_file.exists()
+        assert usage_file.read_text(encoding="utf-8") == "42.0"
+        mock_print.assert_called_once()
+        printed = mock_print.call_args[0][0]
+        assert "42% LIB" in printed
+
+    def test_main_with_empty_stdin(self, tmp_path: Path) -> None:
+        from library_server.hooks.scripts.status_line import main
+
+        with patch("sys.stdin") as mock_stdin, patch("builtins.print") as mock_print:
+            mock_stdin.read.return_value = ""
+            main()
+
+        mock_print.assert_called_once()
+        printed = mock_print.call_args[0][0]
+        assert "0% LIB" in printed
+
+    def test_main_with_invalid_json(self, tmp_path: Path) -> None:
+        from library_server.hooks.scripts.status_line import main
+
+        with patch("sys.stdin") as mock_stdin, patch("builtins.print") as mock_print:
+            mock_stdin.read.return_value = "{not valid json"
+            main()
+
+        mock_print.assert_called_once()
+        printed = mock_print.call_args[0][0]
+        assert "0% LIB" in printed
+
+    def test_main_if_name_main_guard(self, tmp_path: Path) -> None:
+        """Verify the ``if __name__ == '__main__'`` block calls main()."""
+        import io
+        import runpy
+        import warnings
+
+        usage_file = tmp_path / "state" / "usage.txt"
+        payload = json.dumps({
+            "cwd": str(tmp_path),
+            "usage_path": str(usage_file),
+            "context_window": {"used_percentage": 7},
+            "rate_limits": {
+                "five_hour": {"used_percentage": 1.0},
+                "seven_day": {"used_percentage": 2.0},
+            },
+        })
+
+        with patch("sys.stdin", io.StringIO(payload)), patch("builtins.print"), \
+                warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            runpy.run_module(
+                "library_server.hooks.scripts.status_line",
+                run_name="__main__",
+            )
+
+        assert usage_file.exists()
+        assert usage_file.read_text(encoding="utf-8") == "7.0"
