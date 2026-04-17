@@ -1,9 +1,0 @@
-{
-  "library": {
-    "command": "library",
-    "env": {
-      "JIRA_EMAIL": "${JIRA_EMAIL}",
-      "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
-    }
-  }
-}
