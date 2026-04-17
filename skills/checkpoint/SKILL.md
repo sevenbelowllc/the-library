@@ -98,8 +98,8 @@ Resume from the checkpoint's "What's Next" section. Read referenced files and re
 
 ## Token Budget
 
-**Weight:** Light-Medium
-**Estimated context cost:** ~800 tokens
+**Weight:** Medium
+**Estimated context cost:** ~1500 tokens
 **Subagent delegation:** No
 
 ## MCP Tools Used

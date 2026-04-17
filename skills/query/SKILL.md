@@ -62,6 +62,29 @@ Generate a formatted status summary:
 - PM not configured → skip task state, note limitation
 - Vault not configured → only memory and checkpoint queries available
 
+## Subagent Orchestration (--report mode)
+
+When generating a full status report, dispatch parallel subagents:
+
+- **Agent 1:** Call `library_vault_parse` + summarize vault state
+- **Agent 2:** Call `library_pm_sync` + summarize PM state
+- **Agent 3:** Call `library_memory_scan` + summarize memory health
+- **Agent 4:** Call `library_checkpoint_list` + summarize recent checkpoints
+
+Main context merges summaries into formatted report.
+
+For simple queries (not --report), single tool call — no subagents needed.
+
+### Fallback
+
+If subagents unavailable, make sequential tool calls in main context.
+
+## Token Budget
+
+**Weight:** Light (simple query), Medium (--report without subagents), Light (--report with subagents)
+**Estimated context cost:** ~500 tokens (simple), ~1500 tokens (--report with subagents)
+**Subagent delegation:** Yes — --report mode parallelizes data collection
+
 ## MCP Tools Used
 
 - `library:vault:parse` — vault content queries

@@ -46,6 +46,12 @@ Ask: "Create these N tasks? (yes / no / select)"
 After task creation, remove the tag from the wiki article.
 The tag's lifecycle: tag in vault → task in PM → tag removed.
 
+## Token Budget
+
+**Weight:** Light
+**Estimated context cost:** ~800 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:vault:parse` — scan tags

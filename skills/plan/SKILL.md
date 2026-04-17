@@ -45,6 +45,12 @@ Ask: "Create these N epics and M tasks?"
 ### Step 5: Link Back
 Add a comment on each created epic linking to the source spec file.
 
+## Token Budget
+
+**Weight:** Medium
+**Estimated context cost:** ~1500 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:pm:create_epic` — create epics
