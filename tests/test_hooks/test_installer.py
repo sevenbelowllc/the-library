@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -264,3 +265,77 @@ class TestInstallHooks:
         assert result["status"] == "installed"
         content = json.loads(settings_path.read_text(encoding="utf-8"))
         assert "hooks" in content
+
+
+class TestDeployScriptsEdgeCases:
+    def test_skips_missing_source_script(self, tmp_path: Path) -> None:
+        """_deploy_scripts skips scripts whose source .py file doesn't exist."""
+        target = tmp_path / "hooks"
+        # Patch _SCRIPT_NAMES to include a name that has no corresponding source file
+        fake_names = list(_SCRIPT_NAMES) + ["nonexistent_script"]
+        with patch("library_server.hooks.installer._SCRIPT_NAMES", fake_names):
+            deployed = _deploy_scripts(target)
+
+        # Only real scripts should be deployed, not the fake one
+        assert deployed == len(_SCRIPT_NAMES)
+        assert not (target / "nonexistent_script.py").exists()
+
+    def test_copy2_oserror_propagates(self, tmp_path: Path) -> None:
+        """_deploy_scripts should propagate OSError when shutil.copy2 fails."""
+        target = tmp_path / "hooks"
+        with patch("library_server.hooks.installer.shutil.copy2", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                _deploy_scripts(target)
+
+
+class TestInstallHooksEdgeCases:
+    def test_invalid_json_falls_back_to_empty(self, tmp_path: Path) -> None:
+        """install_hooks with invalid JSON in settings.json falls back to {}."""
+        settings_path = tmp_path / ".claude" / "settings.json"
+        settings_path.parent.mkdir(parents=True)
+        settings_path.write_text("{bad json!!", encoding="utf-8")
+
+        result = install_hooks(settings_path)
+
+        assert result["status"] == "installed"
+        content = json.loads(settings_path.read_text(encoding="utf-8"))
+        # Should only have hooks and statusLine (no leftover keys from corrupt file)
+        assert set(content.keys()) == {"hooks", "statusLine"}
+
+    def test_settings_dir_created_when_missing(self, tmp_path: Path) -> None:
+        """install_hooks creates the settings directory when it doesn't exist."""
+        settings_path = tmp_path / "new_project" / ".claude" / "settings.json"
+        assert not settings_path.parent.exists()
+
+        result = install_hooks(settings_path)
+
+        assert result["status"] == "installed"
+        assert settings_path.parent.is_dir()
+        assert settings_path.is_file()
+
+    def test_value_error_in_json_falls_back_to_empty(self, tmp_path: Path) -> None:
+        """install_hooks handles ValueError from json.loads gracefully."""
+        settings_path = tmp_path / ".claude" / "settings.json"
+        settings_path.parent.mkdir(parents=True)
+        # Write valid-looking but problematic content, mock ValueError
+        settings_path.write_text("{}", encoding="utf-8")
+        with patch.object(Path, "read_text", return_value="{}"), \
+             patch("library_server.hooks.installer.json.loads", side_effect=ValueError("bad")):
+            result = install_hooks(settings_path)
+
+        assert result["status"] == "installed"
+
+
+class TestGenerateHooksConfigEdgeCases:
+    def test_project_dir_with_spaces(self) -> None:
+        """generate_hooks_config handles paths containing spaces."""
+        config = generate_hooks_config(project_dir="/path/with spaces/my project")
+        for entries in config["hooks"].values():
+            for entry in entries:
+                for h in entry["hooks"]:
+                    assert "/path/with spaces/my project" in h["command"]
+
+    def test_status_line_command_uses_project_dir(self) -> None:
+        """statusLine command should reference the custom project_dir."""
+        config = generate_hooks_config(project_dir="/custom/dir")
+        assert "/custom/dir" in config["statusLine"]["command"]
