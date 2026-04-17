@@ -530,6 +530,14 @@ def _get_vault_orchestrator():
     )
 
 
+@mcp.tool(name="library_dev_token_report")
+def library_dev_token_report() -> dict:
+    """Show per-component token usage for the current session (dev mode)."""
+    from library_server.hooks.scripts.token_tracker import aggregate_usage
+    state_path = Path("~/.library/state/token-usage.json").expanduser()
+    return aggregate_usage(state_path)
+
+
 def main():
     """Run the MCP server."""
     mcp.run(transport="stdio")

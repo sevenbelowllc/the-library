@@ -18,7 +18,7 @@ from library_server.hooks.installer import (
 
 class TestGenerateHooksConfig:
     def test_has_all_hook_types(self) -> None:
-        """generate_hooks_config must include all five hook event types."""
+        """generate_hooks_config must include all six hook event types."""
         config = generate_hooks_config()
         hooks = config["hooks"]
 
@@ -27,6 +27,7 @@ class TestGenerateHooksConfig:
         assert "Stop" in hooks
         assert "PreCompact" in hooks
         assert "SessionEnd" in hooks
+        assert "PostToolUse" in hooks
 
     def test_session_start_has_three_entries(self) -> None:
         """SessionStart must have 3 matcher entries: startup|resume, compact, clear."""
@@ -96,10 +97,10 @@ class TestGenerateHooksConfig:
                         break
         assert found, "Expected $CLAUDE_PROJECT_DIR in at least one command"
 
-    def test_hooks_count_is_five(self) -> None:
-        """There should be exactly 5 hook event types."""
+    def test_hooks_count_is_six(self) -> None:
+        """There should be exactly 6 hook event types."""
         config = generate_hooks_config()
-        assert len(config["hooks"]) == 5
+        assert len(config["hooks"]) == 6
 
 
 class TestDeployScripts:
@@ -141,7 +142,7 @@ class TestInstallHooks:
         result = install_hooks(settings_path)
 
         assert result["status"] == "installed"
-        assert result["hooks_count"] == 5
+        assert result["hooks_count"] == 6
         assert result["scripts_deployed"] == len(_SCRIPT_NAMES)
         assert settings_path.exists()
 
@@ -150,7 +151,7 @@ class TestInstallHooks:
         assert "statusLine" in content
 
     def test_install_hooks_new_file_has_all_hook_types(self, tmp_path: Path) -> None:
-        """New settings.json must contain all five hook types after install."""
+        """New settings.json must contain all six hook types after install."""
         settings_path = tmp_path / ".claude" / "settings.json"
 
         install_hooks(settings_path)
@@ -163,6 +164,7 @@ class TestInstallHooks:
         assert "Stop" in hooks
         assert "PreCompact" in hooks
         assert "SessionEnd" in hooks
+        assert "PostToolUse" in hooks
 
     def test_install_hooks_preserves_existing_settings(self, tmp_path: Path) -> None:
         """install_hooks must not clobber non-hook keys in existing settings."""
@@ -235,12 +237,12 @@ class TestInstallHooks:
         )
 
     def test_install_hooks_returns_correct_hooks_count(self, tmp_path: Path) -> None:
-        """Return dict should report exactly 5 hooks_count."""
+        """Return dict should report exactly 6 hooks_count."""
         settings_path = tmp_path / ".claude" / "settings.json"
 
         result = install_hooks(settings_path)
 
-        assert result["hooks_count"] == 5
+        assert result["hooks_count"] == 6
 
     def test_install_hooks_deploys_scripts_to_hooks_dir(self, tmp_path: Path) -> None:
         """install_hooks must deploy script files alongside the settings config."""

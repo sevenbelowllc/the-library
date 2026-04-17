@@ -26,6 +26,7 @@ _SCRIPT_NAMES = [
     "session_start",
     "status_line",
     "stop_capture",
+    "token_tracker",
 ]
 
 
@@ -115,6 +116,17 @@ def generate_hooks_config(project_dir: str = "$CLAUDE_PROJECT_DIR") -> dict:
                         {
                             "type": "command",
                             "command": _cmd("pre_compact"),
+                        }
+                    ],
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _cmd("token_tracker"),
                         }
                     ],
                 }
