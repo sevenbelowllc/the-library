@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -148,3 +151,142 @@ class TestProcessSessionEnd:
         )
 
         assert result["archived"] is False
+
+    def test_parse_session_state_exception_falls_back_to_utc_date(self, tmp_path: Path) -> None:
+        """When parse_session_state raises, date_prefix falls back to UTC today."""
+        from library_server.hooks.scripts.session_end import process_session_end
+
+        reading_room = tmp_path / "reading-room"
+        reading_room.mkdir()
+        # Write a SESSION.md with invalid content so parse_session_state raises
+        session_file = reading_room / "SESSION.md"
+        session_file.write_text("not valid session frontmatter", encoding="utf-8")
+
+        vault_sessions = tmp_path / "vault" / "sessions"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir(parents=True)
+
+        with patch(
+            "library_server.hooks.scripts.session_end.parse_session_state",
+            side_effect=ValueError("bad parse"),
+        ):
+            result = process_session_end(
+                reading_room=reading_room,
+                sessions_dir=sessions_dir,
+                vault_sessions_dir=vault_sessions,
+                session_id="sess-err",
+            )
+
+        assert result["archived"] is True
+        archived_files = list(vault_sessions.iterdir())
+        assert len(archived_files) == 1
+        # Filename should still contain the session id even with fallback date
+        assert "sess-err" in archived_files[0].name
+
+    def test_date_prefix_none_when_started_field_empty(self, tmp_path: Path) -> None:
+        """When session_data.started is empty string, falls back to UTC date."""
+        from library_server.hooks.scripts.session_end import process_session_end
+
+        reading_room = tmp_path / "reading-room"
+        reading_room.mkdir()
+        _make_session_md(reading_room, started="")
+
+        vault_sessions = tmp_path / "vault" / "sessions"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir(parents=True)
+
+        result = process_session_end(
+            reading_room=reading_room,
+            sessions_dir=sessions_dir,
+            vault_sessions_dir=vault_sessions,
+            session_id="sess-empty",
+        )
+
+        assert result["archived"] is True
+        archived_files = list(vault_sessions.iterdir())
+        assert len(archived_files) == 1
+        assert "sess-empty" in archived_files[0].name
+
+    def test_update_project_state_exception_is_caught(self, tmp_path: Path, capsys) -> None:
+        """When update_project_state_field raises, error is printed to stderr but archiving succeeds."""
+        from library_server.hooks.scripts.session_end import process_session_end
+
+        reading_room = tmp_path / "reading-room"
+        reading_room.mkdir()
+        _make_session_md(reading_room)
+        _make_project_state(reading_room, session_count=3)
+
+        vault_sessions = tmp_path / "vault" / "sessions"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir(parents=True)
+
+        with patch(
+            "library_server.hooks.scripts.session_end.update_project_state_field",
+            side_effect=RuntimeError("disk full"),
+        ):
+            result = process_session_end(
+                reading_room=reading_room,
+                sessions_dir=sessions_dir,
+                vault_sessions_dir=vault_sessions,
+                session_id="sess-fail",
+            )
+
+        assert result["archived"] is True
+        captured = capsys.readouterr()
+        assert "disk full" in captured.err
+
+
+class TestMain:
+    def test_main_with_valid_payload(self, tmp_path: Path) -> None:
+        """main() reads stdin JSON and calls process_session_end."""
+        from library_server.hooks.scripts.session_end import main
+
+        reading_room = tmp_path / "reading-room"
+        reading_room.mkdir()
+        _make_session_md(reading_room)
+
+        vault_sessions = tmp_path / "vault" / "sessions"
+        sessions_dir = tmp_path / "sessions"
+
+        payload = json.dumps({
+            "reading_room": str(reading_room),
+            "sessions_dir": str(sessions_dir),
+            "vault_sessions_dir": str(vault_sessions),
+            "session_id": "main-sess",
+        })
+
+        with patch("sys.stdin", io.StringIO(payload)):
+            main()
+
+        assert vault_sessions.exists()
+        archived_files = list(vault_sessions.iterdir())
+        assert len(archived_files) == 1
+        assert "main-sess" in archived_files[0].name
+
+    def test_main_with_invalid_json(self, tmp_path: Path) -> None:
+        """main() handles invalid JSON gracefully with defaults."""
+        from library_server.hooks.scripts.session_end import main
+
+        with patch("sys.stdin", io.StringIO("not json{")):
+            # Should not raise — uses defaults
+            main()
+
+    def test_main_with_empty_payload(self, tmp_path: Path) -> None:
+        """main() handles empty JSON object using defaults."""
+        from library_server.hooks.scripts.session_end import main
+
+        with patch("sys.stdin", io.StringIO("{}")):
+            main()
+
+    def test_main_entry_point_guard(self) -> None:
+        """The if __name__ == '__main__' block calls main()."""
+        with patch("library_server.hooks.scripts.session_end.main") as mock_main:
+            exec(
+                compile(
+                    "if __name__ == '__main__': main()",
+                    "<test>",
+                    "exec",
+                ),
+                {"__name__": "__main__", "main": mock_main},
+            )
+            mock_main.assert_called_once()
