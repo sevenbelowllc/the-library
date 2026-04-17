@@ -2,32 +2,91 @@
 
 ## Overview
 
-This document covers the test strategy for The Library's PM integration layer,
-focusing on the Jira Cloud REST API client, adapter, and supporting modules.
+This document covers the test strategy for The Library MCP server, including
+all modules: vault builder, PM integration (Jira and Linear), knowledge graph,
+memory management, checkpoint system, and supporting utilities.
+
+**Current stats (as of 2026-04-16):**
+
+- **Total tests:** 746
+- **Overall coverage:** 94.11%
+- **Coverage floor:** 88% (enforced via `pytest-cov` -- builds fail below this threshold)
 
 ---
 
-## Unit Tests (existing -- all mocked)
+## Running Tests
 
-| Module | File | Tests | Coverage |
-|--------|------|-------|----------|
-| JiraClient | `tests/test_jira_client.py` | 27 | Auth, all 16 API methods, error handling, URL normalisation |
-| JiraAdapter | `tests/test_pm_adapter.py` | 16 | Type mapping, JQL construction, status categorisation |
-| LinearAdapter | `tests/test_pm_adapter.py` | 4 (stubs) | Interface compliance, placeholder tests |
-| Vault builder extractor | `tests/vault_builder/` | 13 | Extraction, trust scores, frontmatter generation |
-| Hooks client | `tests/test_hooks/` | 3 | Wrapper, error handling, missing env vars |
-
-**Total unit tests: ~594 (all pass, fully mocked)**
-
-Run all unit tests:
+Coverage is configured automatically via `pyproject.toml`. A single command runs
+all tests with coverage reporting:
 
 ```bash
-python -m pytest tests/ -v --ignore=tests/test_jira_integration.py
+python -m pytest
+```
+
+This runs all unit tests with coverage collection enabled. No extra flags needed.
+
+For verbose output:
+
+```bash
+python -m pytest -v
+```
+
+To run a single test file:
+
+```bash
+python -m pytest tests/test_jira_client.py -v
+```
+
+To run integration tests (requires credentials):
+
+```bash
+JIRA_EMAIL=you@example.com JIRA_API_TOKEN=tok \
+    python -m pytest tests/test_jira_integration.py -v
 ```
 
 ---
 
-## Integration Tests (new)
+## Coverage Summary
+
+### Module-by-Module Highlights
+
+| Module Area | Key Files | Approximate Coverage |
+|-------------|-----------|---------------------|
+| PM / Jira Client | `pm/jira_client.py`, `pm/jira.py` | 96%+ |
+| PM / Linear Adapter | `pm/linear.py` | 90%+ |
+| Vault Builder Core | `vault_builder/orchestrator.py`, `vault_builder/output.py` | 95%+ |
+| Vault Builder Extractors | `vault_builder/extractors/*.py` | 93%+ |
+| Vault Builder Config | `vault_builder/config.py`, `vault_builder/registry.py` | 97%+ |
+| Knowledge Graph | `graph/` | 92%+ |
+| Memory Management | `memory/` | 94%+ |
+| Checkpoint System | `checkpoint/` | 93%+ |
+| MCP Server / Tools | `server.py`, `tools/` | 90%+ |
+| Config Loading | `config.py`, `types.py` | 96%+ |
+
+### Coverage Floor Enforcement
+
+The 88% coverage floor is configured in `pyproject.toml` via `pytest-cov`. Any
+PR or local test run that drops coverage below 88% will fail. The project
+currently sits at 94.11%, well above the floor.
+
+---
+
+## Unit Tests (all mocked)
+
+| Module | File | Tests | Coverage Notes |
+|--------|------|-------|----------------|
+| JiraClient | `tests/test_jira_client.py` | 27 | Auth, all 16 API methods, error handling, URL normalisation |
+| JiraAdapter | `tests/test_pm_adapter.py` | 16 | Type mapping, JQL construction, status categorisation |
+| LinearAdapter | `tests/test_pm_adapter.py` | 4 (stubs) | Interface compliance, placeholder tests |
+| Vault builder extractors | `tests/vault_builder/` | 13 | Extraction, trust scores, frontmatter generation |
+| Hooks client | `tests/test_hooks/` | 3 | Wrapper, error handling, missing env vars |
+| All other modules | `tests/` | 683+ | Server tools, config, memory, graph, checkpoint, types |
+
+**Total unit tests: 746 (all pass, fully mocked)**
+
+---
+
+## Integration Tests
 
 **File:** `tests/test_jira_integration.py`
 
@@ -44,13 +103,6 @@ They are automatically skipped when credentials are not set.
 
 Tests are skipped unless both `JIRA_EMAIL` and `JIRA_API_TOKEN` are set in the
 environment.
-
-### Run command
-
-```bash
-JIRA_EMAIL=you@example.com JIRA_API_TOKEN=tok \
-    python -m pytest tests/test_jira_integration.py -v
-```
 
 ### Test inventory
 
@@ -101,7 +153,7 @@ significant refactor.
 ```
          /  Manual  \          <- 12 checklist items (as needed)
         / Integration \        <- 10 tests (real API, skipped in CI)
-       /  Unit (mocked) \      <- 594 tests (fast, always run)
+       /  Unit (mocked) \      <- 746 tests (fast, always run)
       ---------------------
 ```
 
@@ -110,12 +162,14 @@ significant refactor.
 - **Unit tests** run on every push (no credentials required)
 - **Integration tests** skipped in CI by default (no `JIRA_EMAIL`/`JIRA_API_TOKEN`)
 - To run integration tests in CI, add the secrets to the pipeline environment
+- **Coverage gate:** 88% minimum enforced by `pytest-cov` in `pyproject.toml`
 
 ---
 
 ## Adding new tests
 
-1. **Unit test** every new JiraClient method in `tests/test_jira_client.py`
+1. **Unit test** every new method in the relevant test file
 2. **Adapter test** for type mapping/JQL in `tests/test_pm_adapter.py`
 3. **Integration test** for end-to-end API verification in `tests/test_jira_integration.py`
-4. Update this plan if the test inventory changes significantly
+4. Maintain the 88% coverage floor -- check with `python -m pytest` before committing
+5. Update this plan if the test inventory changes significantly
