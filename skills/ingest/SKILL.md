@@ -54,6 +54,12 @@ Loop for multiple sources:
 When `library:config --init-vault` completes, it asks "Want to ingest sources now?"
 If yes, enters batch mode automatically.
 
+## Token Budget
+
+**Weight:** Light-Medium
+**Estimated context cost:** ~1000 tokens (single), ~1500 tokens (batch)
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:vault:ingest` — classify and bucket source material

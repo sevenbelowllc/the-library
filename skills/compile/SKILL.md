@@ -58,6 +58,28 @@ Display: articles compiled, tags generated, sources consumed.
 Recompiling an article replaces its content entirely from sources.
 No incremental merge — fresh compile every time. Sources are immutable.
 
+## Subagent Orchestration (Batch Mode)
+
+When compiling multiple articles, delegate source parsing to parallel subagents:
+
+- **Agent 1:** Parse and summarize code sources (repos/)
+- **Agent 2:** Parse and summarize PM sources (jira/)
+- **Agent 3:** Parse and summarize archive sources (vault/, memory/, sessions/)
+
+Main context receives structured summaries → synthesizes into wiki articles.
+
+For single article compilation, sequential processing is fine — no subagents needed.
+
+### Fallback
+
+If subagents unavailable, process all sources sequentially in main context.
+
+## Token Budget
+
+**Weight:** Light (batch with subagents), Medium (single article or no subagents)
+**Estimated context cost:** ~1000 tokens per article with subagents
+**Subagent delegation:** Yes — batch source parsing
+
 ## MCP Tools Used
 
 - `library:config:get` — vault path

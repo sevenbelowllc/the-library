@@ -55,6 +55,34 @@ Output structured gap report:
 Ask: "Create PM tasks for gaps?"
 If yes, call `library:pm:create_task` for each actionable gap.
 
+## Subagent Orchestration
+
+For large codebases, delegate file-heavy inventory work to parallel subagents:
+
+### Step 2 (Inventory) — Dispatch 3 parallel Explore subagents:
+
+- **Agent 1 (Specs):** "Inventory the specs/ directory. List each file, extract key claims and requirements. Return a structured summary under 500 words."
+- **Agent 2 (Code):** "Inventory the codebase. List GraphQL modules, services, migrations, and key patterns. Return a structured summary under 500 words."
+- **Agent 3 (Vault/Wiki):** "Inventory the vault wiki articles. List each article, extract [VERIFY], [CONFLICT], [PLANNED] tags. Return a structured summary under 500 words."
+
+Main context receives ~1500 tokens of structured summaries instead of ~15000+ tokens of raw file reads.
+
+### Step 5 (Verification) — Dispatch targeted verification agents:
+
+For each load-bearing claim in the gap analysis, dispatch a focused Explore subagent:
+- "Does compliance-core hardcode DRAFT status anywhere?"
+- "Which migrations create the agent_jobs table?"
+
+### Fallback
+
+If the Agent tool is not available (e.g., non-Claude Code environments), fall back to sequential file reads in main context. The skill works either way — subagents are an optimization, not a requirement.
+
+## Token Budget
+
+**Weight:** Medium (was Heavy before subagent refactor)
+**Estimated context cost:** ~2000 tokens with subagents, ~15000+ without
+**Subagent delegation:** Yes — inventory and verification steps
+
 ## MCP Tools Used
 
 - `library:vault:parse` — vault state

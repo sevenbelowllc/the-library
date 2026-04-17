@@ -78,6 +78,12 @@ Call `library:memory:scan` on ~/.claude/projects/*/memory/:
 - **User confirms destructive operations.** Prune and aggregate require explicit approval.
 - **Archive, don't destroy.** Move pruned memories to an archive section rather than deleting.
 
+## Token Budget
+
+**Weight:** Heavy
+**Estimated context cost:** ~3000 tokens
+**Subagent delegation:** No (needs main context for decisions)
+
 ## MCP Tools Used
 
 - `library:memory:scan` — scan all memories

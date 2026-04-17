@@ -41,6 +41,12 @@ If vault has items not tracked in PM:
 - Ask: "Found N vault items not in PM. Create draft tasks?"
 - If yes, call `library:pm:create_task` for each
 
+## Token Budget
+
+**Weight:** Light-Medium
+**Estimated context cost:** ~1000 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:pm:sync` — pull PM state

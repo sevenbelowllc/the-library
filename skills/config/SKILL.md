@@ -160,6 +160,12 @@ If `library-config.yaml` exists and no subcommand is given, show current config 
 - Use `library:config:set` for individual changes
 - Re-run validation after changes
 
+## Token Budget
+
+**Weight:** Light
+**Estimated context cost:** ~800 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:config:get` — read current config

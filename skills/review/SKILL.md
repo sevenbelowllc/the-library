@@ -64,6 +64,12 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 
 If you haven't run the verification command in THIS session, you cannot claim it passes.
 
+## Token Budget
+
+**Weight:** Light-Medium
+**Estimated context cost:** ~1200 tokens
+**Subagent delegation:** No
+
 ## MCP Tools Used
 
 - `library:pm:update` — update task with verdict
