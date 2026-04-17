@@ -146,6 +146,58 @@ class TestUpdateRoutingOutcome:
         assert len(pending) == 1
         assert len(updated) == 1
 
+    def test_update_routing_outcome_empty_journal(self, tmp_path: Path):
+        """Updating a missing journal file is a no-op (line 76)."""
+        from library_server.hooks.learning import update_routing_outcome
+
+        journal = tmp_path / "nonexistent.jsonl"
+        # Should return early without error
+        update_routing_outcome(
+            journal_path=journal,
+            session_id="sess-ghost",
+            outcome=RoutingOutcome.HIT,
+            outcome_signal="no file",
+        )
+        assert not journal.exists()
+
+    def test_update_routing_outcome_no_pending_entry(self, tmp_path: Path):
+        """Updating when no pending entry exists for session_id is a no-op (line 86)."""
+        from library_server.hooks.learning import (
+            log_routing_decision,
+            read_journal,
+            update_routing_outcome,
+        )
+
+        journal = tmp_path / "routing.jsonl"
+        log_routing_decision(
+            journal_path=journal,
+            session_id="sess-resolved",
+            prompt_keywords=["test"],
+            matched_domain="test",
+            match_type="keyword",
+            injection_tokens=100,
+        )
+        # Resolve it
+        update_routing_outcome(
+            journal_path=journal,
+            session_id="sess-resolved",
+            outcome=RoutingOutcome.HIT,
+            outcome_signal="done",
+        )
+        # Try to update again — no pending entry for this session
+        update_routing_outcome(
+            journal_path=journal,
+            session_id="sess-resolved",
+            outcome=RoutingOutcome.MISS,
+            outcome_signal="should not apply",
+        )
+
+        entries = read_journal(journal)
+        assert len(entries) == 1
+        # Original outcome unchanged
+        assert entries[0]["outcome"] == RoutingOutcome.HIT.value
+        assert entries[0]["outcome_signal"] == "done"
+
 
 class TestReadJournal:
     """Tests for read_journal."""
@@ -262,6 +314,50 @@ class TestAnalyzeRoutingAccuracy:
         report = analyze_routing_accuracy(journal)
         assert report == {}
 
+    def test_analyze_skips_unresolved_entries(self, tmp_path: Path):
+        """Entries with outcome=None are excluded from analysis (line 145)."""
+        from library_server.hooks.learning import (
+            analyze_routing_accuracy,
+            log_routing_decision,
+            update_routing_outcome,
+        )
+
+        journal = tmp_path / "routing.jsonl"
+
+        # Create 10 resolved entries
+        for i in range(10):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"res-{i}",
+                prompt_keywords=["controls"],
+                matched_domain="controls",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+            update_routing_outcome(
+                journal_path=journal,
+                session_id=f"res-{i}",
+                outcome=RoutingOutcome.HIT,
+                outcome_signal="",
+            )
+
+        # Create 5 unresolved entries (outcome stays None)
+        for i in range(5):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"unres-{i}",
+                prompt_keywords=["controls"],
+                matched_domain="controls",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+
+        report = analyze_routing_accuracy(journal, min_observations=10)
+        assert "controls" in report
+        # Only the 10 resolved entries count
+        assert report["controls"]["total"] == 10
+        assert report["controls"]["hits"] == 10
+
 
 class TestDetectDrift:
     """Tests for detect_drift."""
@@ -355,3 +451,126 @@ class TestDetectDrift:
 
         journal = tmp_path / "routing.jsonl"
         assert detect_drift(journal) == []
+
+    def test_detect_drift_skips_unresolved_entries(self, tmp_path: Path):
+        """Unresolved entries (outcome=None) are excluded from drift analysis (line 208)."""
+        from library_server.hooks.learning import (
+            detect_drift,
+            log_routing_decision,
+            update_routing_outcome,
+        )
+
+        journal = tmp_path / "routing.jsonl"
+
+        # 20 resolved HITs
+        for i in range(20):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"hit-{i}",
+                prompt_keywords=["vendor"],
+                matched_domain="vendor",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+            update_routing_outcome(
+                journal_path=journal,
+                session_id=f"hit-{i}",
+                outcome=RoutingOutcome.HIT,
+                outcome_signal="",
+            )
+
+        # 10 unresolved entries — should be ignored
+        for i in range(10):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"pending-{i}",
+                prompt_keywords=["vendor"],
+                matched_domain="vendor",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+
+        # No drift because unresolved entries are skipped
+        drift_report = detect_drift(journal, window_entries=10, drop_threshold=0.4)
+        assert drift_report == []
+
+    def test_detect_drift_skips_low_lifetime_accuracy(self, tmp_path: Path):
+        """Domain with lifetime accuracy <= 0.5 is skipped (line 225)."""
+        from library_server.hooks.learning import (
+            detect_drift,
+            log_routing_decision,
+            update_routing_outcome,
+        )
+
+        journal = tmp_path / "routing.jsonl"
+
+        # Create domain with exactly 50% lifetime accuracy (5 HIT, 5 NOISE)
+        for i in range(10):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"low-{i}",
+                prompt_keywords=["fragile"],
+                matched_domain="fragile",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+            outcome = RoutingOutcome.HIT if i < 5 else RoutingOutcome.NOISE
+            update_routing_outcome(
+                journal_path=journal,
+                session_id=f"low-{i}",
+                outcome=outcome,
+                outcome_signal="",
+            )
+
+        # lifetime_accuracy == 0.5, which is <= 0.5 → skipped
+        drift_report = detect_drift(journal, window_entries=5, drop_threshold=0.4)
+        assert drift_report == []
+
+    def test_detect_drift_at_exact_threshold_boundary(self, tmp_path: Path):
+        """Recent accuracy exactly at drop_threshold does NOT trigger drift."""
+        from library_server.hooks.learning import (
+            detect_drift,
+            log_routing_decision,
+            update_routing_outcome,
+        )
+
+        journal = tmp_path / "routing.jsonl"
+
+        # 20 HITs for high lifetime accuracy
+        for i in range(20):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"good-{i}",
+                prompt_keywords=["policy"],
+                matched_domain="policy",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+            update_routing_outcome(
+                journal_path=journal,
+                session_id=f"good-{i}",
+                outcome=RoutingOutcome.HIT,
+                outcome_signal="",
+            )
+
+        # 10 recent: 4 HIT, 6 NOISE → recent_accuracy = 0.4 (exactly at threshold)
+        for i in range(10):
+            log_routing_decision(
+                journal_path=journal,
+                session_id=f"recent-{i}",
+                prompt_keywords=["policy"],
+                matched_domain="policy",
+                match_type="keyword",
+                injection_tokens=100,
+            )
+            outcome = RoutingOutcome.HIT if i < 4 else RoutingOutcome.NOISE
+            update_routing_outcome(
+                journal_path=journal,
+                session_id=f"recent-{i}",
+                outcome=outcome,
+                outcome_signal="",
+            )
+
+        # recent_accuracy == 0.4, drop_threshold == 0.4 → NOT < threshold → no drift
+        drift_report = detect_drift(journal, window_entries=10, drop_threshold=0.4)
+        assert drift_report == []
