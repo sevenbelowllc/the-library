@@ -35,10 +35,32 @@ from library_server.pm.jira_client import JiraApiError, JiraClient  # noqa: E402
 
 SITE_URL = os.environ.get("JIRA_SITE_URL", "https://sevenbelow.atlassian.net")
 
-# JQL: summary matches markers, created more than 24h ago.
-POLLUTION_JQL = (
-    '(summary ~ "INTEGRATION-TEST" OR summary ~ "DELETE-ME") AND created < -24h'
+# JQL: cast a wide net on summary text; we narrow client-side so JQL's fuzzy
+# `~` operator doesn't scoop up real tickets that merely mention the phrase
+# (e.g. LIBRARY-7 "Fix integration-test cleanup"). The 24h age filter is
+# optional and applied client-side so callers can purge same-session garbage.
+POLLUTION_JQL = '(summary ~ "INTEGRATION-TEST" OR summary ~ "DELETE-ME")'
+
+# Client-side precision filter: the summary must START with one of these
+# markers (optionally followed by a suffix). Real in-flight tickets that
+# merely reference the marker as substring are excluded.
+_POLLUTION_PREFIXES = (
+    "INTEGRATION-TEST-DELETE-ME",
+    "INTEGRATION-TEST-LINK-A",
+    "INTEGRATION-TEST-LINK-B",
+    "INTEGRATION-TEST ",  # trailing space — standalone token, not "integration-test cleanup"
+    "DELETE-ME ",
 )
+
+
+def _is_polluted_summary(summary: str) -> bool:
+    """Precision match: summary must START with a pollution marker.
+
+    Matches ``INTEGRATION-TEST-DELETE-ME xxxx`` (literal prefix) but NOT
+    ``Fix integration-test cleanup`` (real ticket, marker as substring).
+    """
+    up = summary.strip().upper()
+    return any(up.startswith(p) for p in _POLLUTION_PREFIXES)
 
 
 @dataclass
@@ -74,18 +96,42 @@ def filter_polluted_projects(projects_response: dict[str, Any]) -> list[dict[str
 
 
 def filter_polluted_issues(search_response: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return the issues list from a /search/jql response verbatim.
+    """Return only issues whose summary starts with a pollution marker.
 
-    Filtering is done server-side by JQL; this accessor exists so tests can
-    assert the adapter wires results through correctly.
+    JQL's ``summary ~`` is fuzzy and matches substrings, so real tickets like
+    ``Fix integration-test cleanup`` come back in the server response. This
+    filter applies the precision check client-side so we never delete real
+    work tickets even when the broad JQL pulls them.
     """
-    return list(search_response.get("issues", []))
+    issues = search_response.get("issues", [])
+    return [
+        i for i in issues
+        if _is_polluted_summary(i.get("fields", {}).get("summary", ""))
+    ]
 
 
-async def scan(client: JiraClient) -> PollutionReport:
-    """Run both queries and assemble a report."""
-    search = await client.search_issues(jql=POLLUTION_JQL, max_results=100)
-    tickets = filter_polluted_issues(search)
+async def scan(client: JiraClient, *, min_age_hours: int = 0) -> PollutionReport:
+    """Run both queries and assemble a report.
+
+    ``min_age_hours`` = 0 (default) purges same-session garbage; callers that
+    want a safety buffer can pass e.g. 24.
+    """
+    jql = POLLUTION_JQL
+    if min_age_hours > 0:
+        jql = f"{POLLUTION_JQL} AND created < -{min_age_hours}h"
+    # Paginate via nextPageToken — Jira's /search/jql endpoint ignores start_at.
+    all_issues: list[dict[str, Any]] = []
+    next_token: str | None = None
+    while True:
+        page = await client.search_issues(
+            jql=jql, max_results=100, next_page_token=next_token
+        )
+        issues = page.get("issues", [])
+        all_issues.extend(issues)
+        next_token = page.get("nextPageToken")
+        if not next_token or not issues:
+            break
+    tickets = filter_polluted_issues({"issues": all_issues})
 
     # list_projects returns at most 50 per page; iterate.
     all_projects: list[dict[str, Any]] = []
