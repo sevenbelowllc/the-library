@@ -220,6 +220,31 @@ class JiraClient:
             json={"fields": fields or {}},
         )
 
+    async def delete_issue(
+        self,
+        issue_key: str,
+        delete_subtasks: bool = True,
+    ) -> Any:
+        """DELETE /rest/api/3/issue/{key} — permanently removes the issue.
+
+        Used for test cleanup. Returns None on 204.
+        """
+        return await self._request(
+            "DELETE",
+            f"/rest/api/3/issue/{issue_key}",
+            params={"deleteSubtasks": "true" if delete_subtasks else "false"},
+        )
+
+    async def delete_project(self, project_key: str) -> Any:
+        """DELETE /rest/api/3/project/{key} — permanently removes the project.
+
+        Used for test cleanup. Returns None on 204.
+        """
+        return await self._request(
+            "DELETE",
+            f"/rest/api/3/project/{project_key}",
+        )
+
     async def search_issues(
         self,
         jql: str,
