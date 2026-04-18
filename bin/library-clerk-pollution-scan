@@ -51,6 +51,23 @@ _USER_EMAIL_PREFIXES = (
     "e2etest",     # e2etest1@, e2etest-owner@
 )
 
+# NEVER delete these emails — they're long-lived shared fixtures. An earlier
+# session purged `e2e-test@sevenbelow.com` (the canonical auth.setup user)
+# because it matched `e2e-`, then every E2E run failed at auth-setup because
+# Clerk's test instance re-required first_name/last_name on recreate.
+# Lesson: the pollution filter is a heuristic; the allowlist is the safety net.
+# Extra entries can be added via CLERK_POLLUTION_ALLOWLIST env var (comma-separated).
+_USER_EMAIL_ALLOWLIST_DEFAULT = (
+    "e2e-test@sevenbelow.com",
+)
+
+# Long-lived orgs that must never be purged. Extra entries via
+# CLERK_ORG_ALLOWLIST env var (comma-separated, matched case-insensitively
+# against org.name or org.slug).
+_ORG_ALLOWLIST_DEFAULT = (
+    "e2e-test-org",
+)
+
 _ORG_NAME_PREFIXES = (
     "e2e-",
     "e2e.",
@@ -61,21 +78,45 @@ _ORG_NAME_PREFIXES = (
 )
 
 
-def _is_polluted_email(email: str) -> bool:
-    """Email must START with a pollution prefix (case-insensitive).
+def _allowlisted_emails() -> frozenset[str]:
+    """Built-in allowlist plus any CLERK_POLLUTION_ALLOWLIST overrides."""
+    env = os.environ.get("CLERK_POLLUTION_ALLOWLIST", "")
+    extra = {e.strip().lower() for e in env.split(",") if e.strip()}
+    return frozenset({e.lower() for e in _USER_EMAIL_ALLOWLIST_DEFAULT} | extra)
+
+
+def _is_polluted_email(email: str, allowlist: frozenset[str] | None = None) -> bool:
+    """Email must START with a pollution prefix (case-insensitive), and must
+    NOT appear in the allowlist.
 
     Matches ``e2e-owner-1234567890@sevenbelow.com`` but NOT
-    ``bob.e2easton@real.com`` (marker as mid-string substring).
+    ``bob.e2easton@real.com`` (marker as mid-string substring), and NOT
+    ``e2e-test@sevenbelow.com`` (canonical shared test user — allowlisted).
     """
     if not email:
+        return False
+    if allowlist is None:
+        allowlist = _allowlisted_emails()
+    if email.lower() in allowlist:
         return False
     local = email.split("@", 1)[0].lower()
     return any(local.startswith(p) for p in _USER_EMAIL_PREFIXES)
 
 
-def _is_polluted_org(name: str) -> bool:
-    """Org name must START with a pollution prefix (case-insensitive)."""
+def _allowlisted_orgs() -> frozenset[str]:
+    env = os.environ.get("CLERK_ORG_ALLOWLIST", "")
+    extra = {o.strip().lower() for o in env.split(",") if o.strip()}
+    return frozenset({o.lower() for o in _ORG_ALLOWLIST_DEFAULT} | extra)
+
+
+def _is_polluted_org(name: str, slug: str = "", allowlist: frozenset[str] | None = None) -> bool:
+    """Org name must START with a pollution prefix (case-insensitive), and
+    neither name nor slug may appear in the allowlist."""
     if not name:
+        return False
+    if allowlist is None:
+        allowlist = _allowlisted_orgs()
+    if name.lower() in allowlist or (slug and slug.lower() in allowlist):
         return False
     lo = name.strip().lower()
     return any(lo.startswith(p) for p in _ORG_NAME_PREFIXES)
@@ -123,10 +164,11 @@ def _is_older_than(created_at_ms: Any, min_age_hours: int) -> bool:
 
 def filter_polluted_users(users: list[dict[str, Any]], min_age_hours: int) -> list[dict[str, Any]]:
     """Pure filter, easily unit-tested against fixture JSON."""
+    allowlist = _allowlisted_emails()
     out: list[dict[str, Any]] = []
     for u in users:
         email = _primary_email(u)
-        if not _is_polluted_email(email):
+        if not _is_polluted_email(email, allowlist):
             continue
         if not _is_older_than(u.get("created_at"), min_age_hours):
             continue
@@ -135,9 +177,10 @@ def filter_polluted_users(users: list[dict[str, Any]], min_age_hours: int) -> li
 
 
 def filter_polluted_orgs(orgs: list[dict[str, Any]], min_age_hours: int) -> list[dict[str, Any]]:
+    allowlist = _allowlisted_orgs()
     out: list[dict[str, Any]] = []
     for o in orgs:
-        if not _is_polluted_org(o.get("name", "")):
+        if not _is_polluted_org(o.get("name", ""), o.get("slug", ""), allowlist):
             continue
         if not _is_older_than(o.get("created_at"), min_age_hours):
             continue

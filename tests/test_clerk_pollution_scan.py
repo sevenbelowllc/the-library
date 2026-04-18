@@ -66,6 +66,23 @@ class TestPollutedEmailFilter:
     def test_rejects_similar_but_different_prefix(self):
         assert not mod._is_polluted_email("e2easy@real.com")
 
+    def test_allowlist_protects_canonical_shared_user(self):
+        """Regression: 2026-04-18 session purged e2e-test@sevenbelow.com
+        because it matched `e2e-`. The allowlist prevents that."""
+        assert not mod._is_polluted_email("e2e-test@sevenbelow.com")
+
+    def test_allowlist_is_case_insensitive(self):
+        assert not mod._is_polluted_email("E2E-TEST@SEVENBELOW.COM")
+
+    def test_allowlist_env_override_extends_it(self, monkeypatch):
+        monkeypatch.setenv("CLERK_POLLUTION_ALLOWLIST", "protected-fixture@x.com,another@y.com")
+        assert not mod._is_polluted_email("protected-fixture@x.com")
+        assert not mod._is_polluted_email("another@y.com")
+        # Default allowlist still applies
+        assert not mod._is_polluted_email("e2e-test@sevenbelow.com")
+        # Non-allowlisted e2e- emails still match
+        assert mod._is_polluted_email("e2e-ephemeral@x.com")
+
 
 class TestPollutedOrgFilter:
     def test_matches_e2e_dash_prefix(self):
@@ -82,6 +99,21 @@ class TestPollutedOrgFilter:
 
     def test_rejects_empty_name(self):
         assert not mod._is_polluted_org("")
+
+    def test_allowlist_protects_canonical_test_org(self):
+        """Regression: e2e-test-org was deleted in the 2026-04-18 purge."""
+        assert not mod._is_polluted_org("e2e-test-org")
+        assert not mod._is_polluted_org("E2E-TEST-ORG")
+        # By slug too
+        assert not mod._is_polluted_org("some display name", slug="e2e-test-org")
+
+    def test_allowlist_org_env_override_extends_it(self, monkeypatch):
+        monkeypatch.setenv("CLERK_ORG_ALLOWLIST", "protected-org")
+        assert not mod._is_polluted_org("protected-org")
+        # Default still applies
+        assert not mod._is_polluted_org("e2e-test-org")
+        # Other e2e- orgs still purged
+        assert mod._is_polluted_org("e2e-ephemeral-org")
 
 
 # ---------------------------------------------------------------------------
