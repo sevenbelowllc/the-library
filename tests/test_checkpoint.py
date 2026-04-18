@@ -37,7 +37,7 @@ def test_write_checkpoint_creates_file(tmp_path: Path):
 
 
 def test_write_checkpoint_filename_format(tmp_path: Path):
-    """write_checkpoint should use YYYY-MM-DD-HH-MM-SS-<topic>-checkpoint.md format."""
+    """write_checkpoint should use YYYY-MM-DD-<topic>-checkpoint.md format."""
     data = CheckpointData(
         topic="my-feature",
         date="2026-04-10",
@@ -48,6 +48,20 @@ def test_write_checkpoint_filename_format(tmp_path: Path):
     result = write_checkpoint(str(tmp_path), data)
     filename = Path(result["path"]).name
     assert filename == "2026-04-10-my-feature-checkpoint.md"
+
+
+def test_write_checkpoint_slugifies_topic_with_spaces(tmp_path: Path):
+    """Topics with spaces, punctuation, or mixed case must produce kebab-case filenames."""
+    data = CheckpointData(
+        topic="E2E Test Bug — Activity Run Steps",
+        date="2026-04-17",
+        status="Done",
+        next_session="N/A",
+    )
+
+    result = write_checkpoint(str(tmp_path), data)
+    filename = Path(result["path"]).name
+    assert filename == "2026-04-17-e2e-test-bug-activity-run-steps-checkpoint.md"
 
 
 def test_read_checkpoint_roundtrip(tmp_path: Path):

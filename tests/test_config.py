@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from library_server.config import load_config, validate_config, LibraryConfig
+from library_server.config import load_config, resolve_checkpoint_dir, validate_config, LibraryConfig
 
 
 def test_load_config_from_file(tmp_path: Path):
@@ -90,3 +90,60 @@ def test_config_get_section_missing(sample_config: LibraryConfig):
     """get_section for nonexistent section should return empty dict."""
     result = sample_config.get_section("nonexistent")
     assert result == {}
+
+
+# --- resolve_checkpoint_dir: hard-rule enforcement ---
+
+def _write_yaml(path: Path, data: dict) -> Path:
+    cfg_path = path / "library-config.yaml"
+    with open(cfg_path, "w") as f:
+        yaml.dump(data, f)
+    return cfg_path
+
+
+def test_resolve_checkpoint_dir_defaults_under_reading_room(tmp_path: Path):
+    """With no checkpoints.path, default is <reading_room>/checkpoints."""
+    rr = tmp_path / "reading-room"
+    rr.mkdir()
+    cfg_path = _write_yaml(tmp_path, {"reading_room": {"path": "./reading-room"}})
+    config = load_config(cfg_path)
+
+    cp_dir = resolve_checkpoint_dir(config)
+    assert cp_dir == (rr / "checkpoints").resolve()
+    assert cp_dir.exists()
+
+
+def test_resolve_checkpoint_dir_explicit_inside_reading_room(tmp_path: Path):
+    """Explicit checkpoints.path inside the Reading Room is honored."""
+    rr = tmp_path / "reading-room"
+    (rr / "ckpts").mkdir(parents=True)
+    cfg_path = _write_yaml(tmp_path, {
+        "reading_room": {"path": "./reading-room"},
+        "checkpoints": {"path": "./reading-room/ckpts"},
+    })
+    config = load_config(cfg_path)
+
+    cp_dir = resolve_checkpoint_dir(config)
+    assert cp_dir == (rr / "ckpts").resolve()
+
+
+def test_resolve_checkpoint_dir_rejects_path_outside_reading_room(tmp_path: Path):
+    """Explicit checkpoints.path outside the Reading Room must raise."""
+    (tmp_path / "reading-room").mkdir()
+    cfg_path = _write_yaml(tmp_path, {
+        "reading_room": {"path": "./reading-room"},
+        "checkpoints": {"path": "./checkpoints"},
+    })
+    config = load_config(cfg_path)
+
+    with pytest.raises(ValueError, match="must live under reading_room.path"):
+        resolve_checkpoint_dir(config)
+
+
+def test_resolve_checkpoint_dir_requires_reading_room(tmp_path: Path):
+    """Missing reading_room.path must raise — Library is misconfigured."""
+    cfg_path = _write_yaml(tmp_path, {"library": {"version": "1.0"}})
+    config = load_config(cfg_path)
+
+    with pytest.raises(ValueError, match="reading_room.path"):
+        resolve_checkpoint_dir(config)

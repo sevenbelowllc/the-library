@@ -8,10 +8,18 @@ from pathlib import Path
 from library_server.types import CheckpointData
 
 
+def _slugify_topic(topic: str) -> str:
+    """Sanitize a checkpoint topic into a filesystem-safe kebab-case slug."""
+    s = topic.strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-") or "untitled"
+
+
 def write_checkpoint(checkpoint_dir: str, data: CheckpointData) -> dict:
     """Write a structured checkpoint file.
 
-    Creates YYYY-MM-DD-HH-MM-SS-<topic>-checkpoint.md in checkpoint_dir.
+    Creates YYYY-MM-DD-<slug>-checkpoint.md in checkpoint_dir, where slug is
+    derived from data.topic via kebab-case sanitization.
 
     Returns:
         {"status": "written", "path": str}
@@ -19,7 +27,7 @@ def write_checkpoint(checkpoint_dir: str, data: CheckpointData) -> dict:
     path = Path(checkpoint_dir)
     path.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{data.date}-{data.topic}-checkpoint.md"
+    filename = f"{data.date}-{_slugify_topic(data.topic)}-checkpoint.md"
     filepath = path / filename
 
     content = _render_checkpoint(data)
