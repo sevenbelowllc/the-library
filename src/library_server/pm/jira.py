@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from library_server.pm.adapter import PMAdapter, TransitionNotAvailableError
+
+logger = logging.getLogger(__name__)
 from library_server.pm.jira_client import JiraClient
 from library_server.types import (
     EpicResult,
@@ -12,26 +16,36 @@ from library_server.types import (
     ProjectResult,
     ProjectState,
     TaskResult,
-    TaskStatus,
     Transition,
 )
 
-STATUS_MAP = {
-    "to do": TaskStatus.OPEN,
-    "open": TaskStatus.OPEN,
-    "in progress": TaskStatus.IN_PROGRESS,
-    "done": TaskStatus.DONE,
-    "closed": TaskStatus.DONE,
-    "blocked": TaskStatus.BLOCKED,
-}
+# Sensible defaults when the caller hasn't configured pm.workflow.closed /
+# pm.workflow.blocked. Match case-insensitively so "Done" / "done" / "DONE"
+# all classify the same way. These are only used for sync_state bucketing —
+# raw status strings from Jira are preserved verbatim on TaskResult.status.
+DEFAULT_CLOSED_STATUSES: tuple[str, ...] = ("done", "closed", "resolved", "completed")
+DEFAULT_BLOCKED_STATUSES: tuple[str, ...] = ("blocked",)
 
 
 class JiraAdapter(PMAdapter):
     """Jira implementation using JiraClient direct REST API calls."""
 
-    def __init__(self, site_url: str = ""):
+    def __init__(
+        self,
+        site_url: str = "",
+        closed_statuses: tuple[str, ...] | None = None,
+        blocked_statuses: tuple[str, ...] | None = None,
+    ):
         self.site_url = site_url
         self.client = JiraClient(site_url=site_url)
+        self._closed = tuple(s.lower() for s in (closed_statuses or DEFAULT_CLOSED_STATUSES))
+        self._blocked = tuple(s.lower() for s in (blocked_statuses or DEFAULT_BLOCKED_STATUSES))
+
+    def _is_closed(self, status: str) -> bool:
+        return status.lower() in self._closed
+
+    def _is_blocked(self, status: str) -> bool:
+        return status.lower() in self._blocked
 
     async def create_task(
         self,
@@ -49,11 +63,29 @@ class JiraAdapter(PMAdapter):
             labels=labels,
             parent_key=epic_id,
         )
+        task_id = result.get("key", "")
+        # Jira's create response doesn't include status. Fetch it so the caller
+        # sees the real initial state (usually "To Do", but workflow schemes
+        # can override). Cheap — single REST call — and avoids returning
+        # stale/guessed values.
+        status = ""
+        if task_id:
+            try:
+                issue = await self.client.get_issue(task_id, fields="status")
+                status = issue.get("fields", {}).get("status", {}).get("name", "")
+            except Exception as e:
+                # The task was created; only the status fetch failed. Log so the
+                # caller can see why the returned status is blank, but don't
+                # raise — losing reference to the newly-created task_id would
+                # be worse than a missing status field.
+                logger.warning(
+                    "created task %s but status fetch failed: %s", task_id, e
+                )
         return TaskResult(
-            task_id=result.get("key", ""),
+            task_id=task_id,
             project_key=project_key,
             summary=summary,
-            status=TaskStatus.OPEN,
+            status=status,
             labels=labels or [],
             url=result.get("self", ""),
         )
@@ -163,10 +195,10 @@ class JiraAdapter(PMAdapter):
         return ProjectState(
             project_key=project_key,
             project_name=project_key,
-            open_tasks=[t for t in all_tasks if t.status == TaskStatus.OPEN],
+            open_tasks=[t for t in all_tasks if not self._is_closed(t.status) and not self._is_blocked(t.status)],
             stale_tasks=[],
-            blocked_tasks=[t for t in all_tasks if t.status == TaskStatus.BLOCKED],
-            recently_closed=[t for t in all_tasks if t.status == TaskStatus.DONE],
+            blocked_tasks=[t for t in all_tasks if self._is_blocked(t.status)],
+            recently_closed=[t for t in all_tasks if self._is_closed(t.status)],
         )
 
     async def get_transitions(self, task_id: str) -> list[Transition]:
@@ -175,7 +207,7 @@ class JiraAdapter(PMAdapter):
             Transition(
                 transition_id=t["id"],
                 name=t["name"],
-                to_status=STATUS_MAP.get(t["to"]["name"].lower(), TaskStatus.OPEN),
+                to_status=t.get("to", {}).get("name", ""),
             )
             for t in result.get("transitions", [])
         ]
@@ -271,14 +303,18 @@ class JiraAdapter(PMAdapter):
 
 
 def _parse_issue(data: dict, project_key: str) -> TaskResult:
-    """Parse a Jira issue response into TaskResult."""
+    """Parse a Jira issue response into TaskResult.
+
+    Returns the raw Jira ``status.name`` verbatim (e.g. "To Do", "In Review",
+    "Done"). Callers that need bucketing should use ``JiraAdapter.sync_state``
+    or consult ``library-config.yaml#pm.workflow``.
+    """
     fields = data.get("fields", {})
-    status_name = fields.get("status", {}).get("name", "Open").lower()
     return TaskResult(
         task_id=data.get("key", ""),
         project_key=project_key,
         summary=fields.get("summary", ""),
-        status=STATUS_MAP.get(status_name, TaskStatus.OPEN),
+        status=fields.get("status", {}).get("name", ""),
         labels=fields.get("labels", []),
         url=data.get("self", ""),
     )

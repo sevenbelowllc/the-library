@@ -180,7 +180,7 @@ async def library_pm_sync(project_key: str) -> dict:
         "open": len(state.open_tasks),
         "blocked": len(state.blocked_tasks),
         "recently_closed": len(state.recently_closed),
-        "tasks": [{"id": t.task_id, "summary": t.summary, "status": t.status.value} for t in state.open_tasks],
+        "tasks": [{"id": t.task_id, "summary": t.summary, "status": t.status} for t in state.open_tasks],
     }
 
 
@@ -207,7 +207,7 @@ async def library_pm_update(task_id: str, status: str = "", comment: str = "") -
             "available_transitions": e.available_transitions,
             "message": str(e),
         }
-    return {"task_id": result.task_id, "status": result.status.value}
+    return {"task_id": result.task_id, "status": result.status}
 
 
 @mcp.tool(name="library_pm_get_issue")
@@ -253,7 +253,7 @@ async def library_pm_query(project_key: str, status: str = "", labels: str = "")
     results = await adapter.query_tasks(project_key, filters if filters else None)
     return {
         "count": len(results),
-        "tasks": [{"id": t.task_id, "summary": t.summary, "status": t.status.value} for t in results],
+        "tasks": [{"id": t.task_id, "summary": t.summary, "status": t.status} for t in results],
     }
 
 
@@ -311,7 +311,7 @@ async def library_pm_assign_task(task_id: str, account_id: str) -> dict:
     """Assign a task to a user by account ID."""
     adapter = _get_pm_adapter()
     result = await adapter.assign_task(task_id, account_id)
-    return {"task_id": result.task_id, "status": result.status.value}
+    return {"task_id": result.task_id, "status": result.status}
 
 
 @mcp.tool(name="library_pm_link_issues")
@@ -333,18 +333,38 @@ async def library_pm_get_link_types() -> dict:
 
 
 def _get_pm_adapter() -> "PMAdapter":
-    """Get the configured PM adapter."""
+    """Get the configured PM adapter.
+
+    Reads ``pm.workflow`` from library-config.yaml so sync_state classifies
+    tasks according to the user's actual workflow state names rather than a
+    hardcoded 4-bucket taxonomy. Missing config falls back to the adapter's
+    built-in defaults.
+    """
     from library_server.pm.adapter import PMAdapter
     config = get_config()
     pm_config = config.get_section("pm")
     provider = pm_config.get("provider", "none")
 
+    workflow = pm_config.get("workflow") or {}
+    closed_name = workflow.get("closed")
+    blocked_name = workflow.get("blocked")
+    closed_statuses = (closed_name,) if closed_name else None
+    blocked_statuses = (blocked_name,) if blocked_name else None
+
     if provider == "jira":
         from library_server.pm.jira import JiraAdapter
-        return JiraAdapter(site_url=pm_config.get("site_url", ""))
+        return JiraAdapter(
+            site_url=pm_config.get("site_url", ""),
+            closed_statuses=closed_statuses,
+            blocked_statuses=blocked_statuses,
+        )
     elif provider == "linear":
         from library_server.pm.linear import LinearAdapter
-        return LinearAdapter(api_key=pm_config.get("api_key", ""))
+        return LinearAdapter(
+            api_key=pm_config.get("api_key", ""),
+            closed_statuses=closed_statuses,
+            blocked_statuses=blocked_statuses,
+        )
     else:
         raise ValueError(f"PM provider '{provider}' not configured. Run library:config to set up.")
 

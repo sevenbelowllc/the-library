@@ -7,13 +7,6 @@ from datetime import datetime
 from enum import Enum
 
 
-class TaskStatus(Enum):
-    OPEN = "open"
-    IN_PROGRESS = "in_progress"
-    DONE = "done"
-    BLOCKED = "blocked"
-
-
 class Verdict(Enum):
     VERIFIED = "verified"
     PARTIAL = "partial"
@@ -25,7 +18,7 @@ class TaskResult:
     task_id: str
     project_key: str
     summary: str
-    status: TaskStatus
+    status: str  # Raw status name from the PM tool (e.g. "To Do", "In Review", "Done"). Do not collapse into a small enum — each project's workflow owns its state names.
     labels: list[str] = field(default_factory=list)
     url: str = ""
 
@@ -63,7 +56,7 @@ class ProjectState:
 class Transition:
     transition_id: str
     name: str
-    to_status: TaskStatus
+    to_status: str  # Raw destination status name from the PM tool.
 
 
 @dataclass

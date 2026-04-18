@@ -40,7 +40,7 @@ from library_server.server import (
     _get_pm_adapter,
     _get_vault_orchestrator,
 )
-from library_server.types import TaskResult, TaskStatus, EpicResult, ProjectState
+from library_server.types import TaskResult, EpicResult, ProjectState
 
 
 # --- Helpers ---
@@ -226,7 +226,7 @@ class TestPMTools:
     async def test_pm_create_task(self):
         mock_adapter = AsyncMock()
         mock_adapter.create_task.return_value = TaskResult(
-            task_id="PROJ-1", project_key="PROJ", summary="Test", status=TaskStatus.OPEN, url="http://example.com"
+            task_id="PROJ-1", project_key="PROJ", summary="Test", status="To Do", url="http://example.com"
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_create_task("PROJ", "Test", "Desc", "label1,label2")
@@ -239,7 +239,7 @@ class TestPMTools:
     async def test_pm_create_task_no_labels(self):
         mock_adapter = AsyncMock()
         mock_adapter.create_task.return_value = TaskResult(
-            task_id="PROJ-1", project_key="PROJ", summary="Test", status=TaskStatus.OPEN, url=""
+            task_id="PROJ-1", project_key="PROJ", summary="Test", status="To Do", url=""
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_create_task("PROJ", "Test", "Desc")
@@ -249,7 +249,7 @@ class TestPMTools:
     async def test_pm_create_task_with_epic(self):
         mock_adapter = AsyncMock()
         mock_adapter.create_task.return_value = TaskResult(
-            task_id="PROJ-5", project_key="PROJ", summary="Child", status=TaskStatus.OPEN, url=""
+            task_id="PROJ-5", project_key="PROJ", summary="Child", status="To Do", url=""
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             await library_pm_create_task("PROJ", "Child", "Desc", "", epic_id="PROJ-1")
@@ -272,7 +272,7 @@ class TestPMTools:
         mock_adapter = AsyncMock()
         mock_adapter.sync_state.return_value = ProjectState(
             project_key="PROJ", project_name="PROJ",
-            open_tasks=[TaskResult(task_id="PROJ-1", project_key="PROJ", summary="Open", status=TaskStatus.OPEN, url="")],
+            open_tasks=[TaskResult(task_id="PROJ-1", project_key="PROJ", summary="Open", status="To Do", url="")],
             stale_tasks=[], blocked_tasks=[], recently_closed=[],
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
@@ -284,18 +284,18 @@ class TestPMTools:
     async def test_pm_update(self):
         mock_adapter = AsyncMock()
         mock_adapter.update_task.return_value = TaskResult(
-            task_id="PROJ-1", project_key="PROJ", summary="Done", status=TaskStatus.DONE, url=""
+            task_id="PROJ-1", project_key="PROJ", summary="Done", status="Done", url=""
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_update("PROJ-1", status="Done", comment="Finished")
-            assert result["status"] == "done"
+            assert result["status"] == "Done"
             mock_adapter.update_task.assert_called_once_with("PROJ-1", "Done", "Finished")
 
     @pytest.mark.asyncio
     async def test_pm_update_empty_strings(self):
         mock_adapter = AsyncMock()
         mock_adapter.update_task.return_value = TaskResult(
-            task_id="PROJ-1", project_key="PROJ", summary="T", status=TaskStatus.OPEN, url=""
+            task_id="PROJ-1", project_key="PROJ", summary="T", status="To Do", url=""
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             await library_pm_update("PROJ-1")
@@ -305,7 +305,7 @@ class TestPMTools:
     async def test_pm_query(self):
         mock_adapter = AsyncMock()
         mock_adapter.query_tasks.return_value = [
-            TaskResult(task_id="PROJ-1", project_key="PROJ", summary="T1", status=TaskStatus.OPEN, url=""),
+            TaskResult(task_id="PROJ-1", project_key="PROJ", summary="T1", status="To Do", url=""),
         ]
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_query("PROJ", status="Open", labels="bug,urgent")

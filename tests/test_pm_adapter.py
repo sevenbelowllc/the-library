@@ -9,7 +9,6 @@ import pytest
 from library_server.pm.adapter import PMAdapter
 from library_server.pm.jira import JiraAdapter
 from library_server.pm.linear import LinearAdapter
-from library_server.types import TaskStatus
 
 
 # ---------------------------------------------------------------------------
@@ -35,15 +34,20 @@ class TestJiraAdapter:
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue = AsyncMock(return_value={
             "key": "PROJ-123",
-            "fields": {"summary": "Test task", "status": {"name": "To Do"}, "labels": ["core"]},
             "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-123",
+        })
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-123",
+            "fields": {"status": {"name": "To Do"}},
         })
 
         result = await adapter.create_task("PROJ", "Test task", "desc", labels=["core"])
         assert result.task_id == "PROJ-123"
         assert result.summary == "Test task"
         assert result.project_key == "PROJ"
+        assert result.status == "To Do"
         adapter.client.create_issue.assert_called_once()
+        adapter.client.get_issue.assert_called_once_with("PROJ-123", fields="status")
         call_kwargs = adapter.client.create_issue.call_args.kwargs
         assert call_kwargs["parent_key"] == ""
 
@@ -57,14 +61,44 @@ class TestJiraAdapter:
             "key": "PROJ-124",
             "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-124",
         })
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-124",
+            "fields": {"status": {"name": "To Do"}},
+        })
 
         result = await adapter.create_task(
             "PROJ", "Child task", "desc", labels=[], epic_id="PROJ-E1"
         )
         assert result.task_id == "PROJ-124"
         assert result.summary == "Child task"
+        assert result.status == "To Do"
         call_kwargs = adapter.client.create_issue.call_args.kwargs
         assert call_kwargs["parent_key"] == "PROJ-E1"
+
+    @pytest.mark.asyncio
+    async def test_create_task_survives_status_fetch_failure(self, monkeypatch, caplog):
+        """If the post-create status fetch fails, create_task must still return
+        the TaskResult (with empty status) so the caller doesn't lose reference
+        to the newly-created task_id. Warning is logged per TESTING-STANDARD §3
+        (no silent swallowing)."""
+        import logging
+
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.create_issue = AsyncMock(return_value={
+            "key": "PROJ-999",
+            "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-999",
+        })
+        adapter.client.get_issue = AsyncMock(side_effect=RuntimeError("boom"))
+
+        with caplog.at_level(logging.WARNING, logger="library_server.pm.jira"):
+            result = await adapter.create_task("PROJ", "Task", "desc")
+
+        assert result.task_id == "PROJ-999"
+        assert result.status == ""
+        assert "status fetch failed" in caplog.text
+        assert "PROJ-999" in caplog.text
 
     @pytest.mark.asyncio
     async def test_create_epic(self, monkeypatch):
@@ -125,7 +159,7 @@ class TestJiraAdapter:
 
         result = await adapter.update_task("PROJ-1", status="Done")
         adapter.client.transition_issue.assert_called_once_with("PROJ-1", "5")
-        assert result.status == TaskStatus.DONE
+        assert result.status == "Done"
 
     @pytest.mark.asyncio
     async def test_update_task_matches_named_transition(self, monkeypatch):
@@ -148,7 +182,7 @@ class TestJiraAdapter:
 
         result = await adapter.update_task("PROJ-1", status="Start Progress")
         adapter.client.transition_issue.assert_called_once_with("PROJ-1", "21")
-        assert result.status == TaskStatus.IN_PROGRESS
+        assert result.status == "In Progress"
 
     @pytest.mark.asyncio
     async def test_update_task_transition_not_found_raises(self, monkeypatch):
@@ -239,44 +273,78 @@ class TestJiraAdapter:
         assert "labels in (bug,urgent)" in jql
 
     @pytest.mark.asyncio
-    async def test_sync_state(self, monkeypatch):
-        """sync_state should categorize tasks by status."""
+    async def test_sync_state_classifies_by_workflow_state(self, monkeypatch):
+        """sync_state must bucket by raw status using the adapter's configured
+        closed/blocked lists — not by a hardcoded 4-state enum. Workflows like
+        Jira's default ("To Do" / "In Progress" / "In Review" / "Done") must
+        route correctly: In Review is OPEN, not silently collapsed to closed."""
         monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.search_issues = AsyncMock(return_value={
             "issues": [
-                {"key": "PROJ-1", "fields": {"summary": "Open task", "status": {"name": "Open"}, "labels": []}},
-                {"key": "PROJ-2", "fields": {"summary": "Done task", "status": {"name": "Done"}, "labels": []}},
-                {"key": "PROJ-3", "fields": {"summary": "Blocked", "status": {"name": "Blocked"}, "labels": []}},
+                {"key": "P-1", "fields": {"summary": "Todo", "status": {"name": "To Do"}, "labels": []}},
+                {"key": "P-2", "fields": {"summary": "WIP", "status": {"name": "In Progress"}, "labels": []}},
+                {"key": "P-3", "fields": {"summary": "Review", "status": {"name": "In Review"}, "labels": []}},
+                {"key": "P-4", "fields": {"summary": "Done", "status": {"name": "Done"}, "labels": []}},
+                {"key": "P-5", "fields": {"summary": "Blocked", "status": {"name": "Blocked"}, "labels": []}},
             ],
         })
 
         state = await adapter.sync_state("PROJ")
         assert state.project_key == "PROJ"
-        assert len(state.open_tasks) == 1
-        assert len(state.recently_closed) == 1
-        assert len(state.blocked_tasks) == 1
+        # Raw statuses are preserved on TaskResult — no enum collapse
+        all_statuses = {t.status for t in state.open_tasks + state.recently_closed + state.blocked_tasks}
+        assert all_statuses == {"To Do", "In Progress", "In Review", "Done", "Blocked"}
+        # Bucketing: To Do, In Progress, In Review are all "open" (not closed, not blocked)
+        open_statuses = {t.status for t in state.open_tasks}
+        assert open_statuses == {"To Do", "In Progress", "In Review"}
+        assert [t.status for t in state.recently_closed] == ["Done"]
+        assert [t.status for t in state.blocked_tasks] == ["Blocked"]
+
+    @pytest.mark.asyncio
+    async def test_sync_state_honors_custom_closed_statuses(self, monkeypatch):
+        """When a caller configures pm.workflow.closed to a non-default name
+        (e.g. ``Shipped``), sync_state must classify by that name."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(
+            site_url="https://test.atlassian.net",
+            closed_statuses=("Shipped",),
+        )
+        adapter.client.search_issues = AsyncMock(return_value={
+            "issues": [
+                {"key": "P-1", "fields": {"summary": "S", "status": {"name": "Shipped"}, "labels": []}},
+                {"key": "P-2", "fields": {"summary": "D", "status": {"name": "Done"}, "labels": []}},
+            ],
+        })
+
+        state = await adapter.sync_state("PROJ")
+        # With Shipped as the closed name, Done is no longer closed — it's open.
+        assert [t.status for t in state.recently_closed] == ["Shipped"]
+        assert [t.status for t in state.open_tasks] == ["Done"]
 
     @pytest.mark.asyncio
     async def test_get_transitions(self, monkeypatch):
-        """get_transitions should map Jira transitions to Transition objects."""
+        """get_transitions should preserve Jira's raw target-status names verbatim."""
         monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
             "transitions": [
-                {"id": "11", "name": "To Do", "to": {"name": "To Do"}},
-                {"id": "21", "name": "In Progress", "to": {"name": "In Progress"}},
-                {"id": "31", "name": "Done", "to": {"name": "Done"}},
+                {"id": "11", "name": "Any", "to": {"name": "To Do"}},
+                {"id": "21", "name": "Any", "to": {"name": "In Progress"}},
+                {"id": "25", "name": "Any", "to": {"name": "In Review"}},
+                {"id": "31", "name": "Any", "to": {"name": "Done"}},
             ],
         })
 
         transitions = await adapter.get_transitions("PROJ-1")
-        assert len(transitions) == 3
+        assert len(transitions) == 4
         assert transitions[0].transition_id == "11"
-        assert transitions[0].to_status == TaskStatus.OPEN
-        assert transitions[2].to_status == TaskStatus.DONE
+        assert transitions[0].to_status == "To Do"
+        assert transitions[2].to_status == "In Review"
+        assert transitions[3].to_status == "Done"
 
     @pytest.mark.asyncio
     async def test_create_project_auto_lead(self, monkeypatch):
@@ -576,7 +644,7 @@ class TestLinearAdapterExtended:
         mocker.patch.object(adapter, "_graphql", side_effect=mock_graphql)
         result = await adapter.update_task("abc", comment="Progress note")
         assert result.task_id == "PROJ-42"
-        assert result.status == TaskStatus.IN_PROGRESS
+        assert result.status == "In Progress"
         assert len(calls) == 2  # comment + fetch
 
     @pytest.mark.asyncio
@@ -596,7 +664,7 @@ class TestLinearAdapterExtended:
             },
         )
         result = await adapter.update_task("abc")
-        assert result.status == TaskStatus.DONE
+        assert result.status == "Done"
         adapter._graphql.assert_called_once()
 
     @pytest.mark.asyncio
@@ -630,7 +698,7 @@ class TestLinearAdapterExtended:
         results = await adapter.query_tasks("TEAM-1")
         assert len(results) == 2
         assert results[0].labels == ["bug"]
-        assert results[1].status == TaskStatus.IN_PROGRESS
+        assert results[1].status == "In Progress"
 
     @pytest.mark.asyncio
     async def test_sync_state(self, mocker):
@@ -677,9 +745,9 @@ class TestLinearAdapterExtended:
         )
         transitions = await adapter.get_transitions("PROJ-1")
         assert len(transitions) == 3
-        assert transitions[0].to_status == TaskStatus.OPEN
-        assert transitions[1].to_status == TaskStatus.IN_PROGRESS
-        assert transitions[2].to_status == TaskStatus.DONE
+        assert transitions[0].to_status == "Backlog"
+        assert transitions[1].to_status == "In Progress"
+        assert transitions[2].to_status == "Done"
 
     def test_import_error_handling(self, mocker):
         """LinearAdapter should raise ImportError when httpx is not available."""
