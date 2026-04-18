@@ -36,6 +36,7 @@ class JiraAdapter(PMAdapter):
         summary: str,
         description: str,
         labels: list[str] | None = None,
+        epic_id: str = "",
     ) -> TaskResult:
         result = await self.client.create_issue(
             project_key=project_key,
@@ -43,8 +44,16 @@ class JiraAdapter(PMAdapter):
             summary=summary,
             description=description,
             labels=labels,
+            parent_key=epic_id,
         )
-        return _parse_issue(result, project_key)
+        return TaskResult(
+            task_id=result.get("key", ""),
+            project_key=project_key,
+            summary=summary,
+            status=TaskStatus.OPEN,
+            labels=labels or [],
+            url=result.get("self", ""),
+        )
 
     async def create_epic(
         self,

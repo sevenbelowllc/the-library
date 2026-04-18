@@ -26,6 +26,7 @@ class PMAdapter(ABC):
         summary: str,
         description: str,
         labels: list[str] | None = None,
+        epic_id: str = "",
     ) -> TaskResult:
         ...
 

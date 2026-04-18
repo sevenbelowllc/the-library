@@ -144,12 +144,15 @@ def library_vault_ingest(vault_path: str, source_path: str, tier: str, category:
 
 @mcp.tool(name="library_pm_create_task")
 async def library_pm_create_task(
-    project_key: str, summary: str, description: str, labels: str = ""
+    project_key: str, summary: str, description: str, labels: str = "", epic_id: str = ""
 ) -> dict:
-    """Create a task in the configured PM tool (Jira or Linear)."""
+    """Create a task in the configured PM tool (Jira or Linear).
+
+    Pass epic_id (e.g. 'COS-8') to attach the task as a child of that epic.
+    """
     adapter = _get_pm_adapter()
     label_list = [l.strip() for l in labels.split(",") if l.strip()] if labels else []
-    result = await adapter.create_task(project_key, summary, description, label_list)
+    result = await adapter.create_task(project_key, summary, description, label_list, epic_id=epic_id)
     return {"task_id": result.task_id, "summary": result.summary, "url": result.url}
 
 
