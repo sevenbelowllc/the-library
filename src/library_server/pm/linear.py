@@ -16,25 +16,24 @@ from library_server.types import (
     ProjectResult,
     ProjectState,
     TaskResult,
-    TaskStatus,
     Transition,
 )
 
 LINEAR_API = "https://api.linear.app/graphql"
 
-STATUS_MAP = {
-    "todo": TaskStatus.OPEN,
-    "backlog": TaskStatus.OPEN,
-    "in progress": TaskStatus.IN_PROGRESS,
-    "done": TaskStatus.DONE,
-    "canceled": TaskStatus.DONE,
-}
+DEFAULT_CLOSED_STATUSES: tuple[str, ...] = ("done", "canceled", "completed")
+DEFAULT_BLOCKED_STATUSES: tuple[str, ...] = ("blocked",)
 
 
 class LinearAdapter(PMAdapter):
     """Linear implementation using GraphQL API."""
 
-    def __init__(self, api_key: str = ""):
+    def __init__(
+        self,
+        api_key: str = "",
+        closed_statuses: tuple[str, ...] | None = None,
+        blocked_statuses: tuple[str, ...] | None = None,
+    ):
         if httpx is None:
             raise ImportError("httpx is required for Linear adapter: pip install the-library[linear]")
         self.api_key = api_key
@@ -45,6 +44,14 @@ class LinearAdapter(PMAdapter):
                 "Content-Type": "application/json",
             },
         )
+        self._closed = tuple(s.lower() for s in (closed_statuses or DEFAULT_CLOSED_STATUSES))
+        self._blocked = tuple(s.lower() for s in (blocked_statuses or DEFAULT_BLOCKED_STATUSES))
+
+    def _is_closed(self, status: str) -> bool:
+        return status.lower() in self._closed
+
+    def _is_blocked(self, status: str) -> bool:
+        return status.lower() in self._blocked
 
     async def _graphql(self, query: str, variables: dict | None = None) -> dict:
         """Execute a GraphQL query against Linear API."""
@@ -87,7 +94,7 @@ class LinearAdapter(PMAdapter):
             task_id=issue["identifier"],
             project_key=project_key,
             summary=issue["title"],
-            status=STATUS_MAP.get(issue["state"]["name"].lower(), TaskStatus.OPEN),
+            status=issue["state"]["name"],
             labels=labels or [],
             url=issue.get("url", ""),
         )
@@ -151,7 +158,7 @@ class LinearAdapter(PMAdapter):
             task_id=issue["identifier"],
             project_key="",
             summary=issue["title"],
-            status=STATUS_MAP.get(issue["state"]["name"].lower(), TaskStatus.OPEN),
+            status=issue["state"]["name"],
             url=issue.get("url", ""),
         )
 
@@ -176,7 +183,7 @@ class LinearAdapter(PMAdapter):
                 task_id=i["identifier"],
                 project_key=project_key,
                 summary=i["title"],
-                status=STATUS_MAP.get(i["state"]["name"].lower(), TaskStatus.OPEN),
+                status=i["state"]["name"],
                 labels=[l["name"] for l in i.get("labels", {}).get("nodes", [])],
                 url=i.get("url", ""),
             )
@@ -188,10 +195,10 @@ class LinearAdapter(PMAdapter):
         return ProjectState(
             project_key=project_key,
             project_name=project_key,
-            open_tasks=[t for t in all_tasks if t.status == TaskStatus.OPEN],
+            open_tasks=[t for t in all_tasks if not self._is_closed(t.status) and not self._is_blocked(t.status)],
             stale_tasks=[],
-            blocked_tasks=[t for t in all_tasks if t.status == TaskStatus.BLOCKED],
-            recently_closed=[t for t in all_tasks if t.status == TaskStatus.DONE],
+            blocked_tasks=[t for t in all_tasks if self._is_blocked(t.status)],
+            recently_closed=[t for t in all_tasks if self._is_closed(t.status)],
         )
 
     async def get_transitions(self, task_id: str) -> list[Transition]:
@@ -206,7 +213,7 @@ class LinearAdapter(PMAdapter):
             Transition(
                 transition_id=s["id"],
                 name=s["name"],
-                to_status=STATUS_MAP.get(s["name"].lower(), TaskStatus.OPEN),
+                to_status=s["name"],
             )
             for s in result["data"]["workflowStates"]["nodes"]
         ]
