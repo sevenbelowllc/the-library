@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from library_server.pm.adapter import PMAdapter
+from library_server.pm.adapter import PMAdapter, TransitionNotAvailableError
 from library_server.pm.jira_client import JiraClient
 from library_server.types import (
     EpicResult,
+    IssueComment,
+    IssueDetail,
+    IssueTransitionOption,
     ProjectResult,
     ProjectState,
     TaskResult,
@@ -90,13 +93,56 @@ class JiraAdapter(PMAdapter):
             await self.client.add_comment(task_id, comment)
         if status:
             trans_data = await self.client.get_transitions(task_id)
-            for t in trans_data.get("transitions", []):
-                if t["name"].lower() == status.lower():
-                    await self.client.transition_issue(task_id, t["id"])
+            transitions = trans_data.get("transitions", [])
+            wanted = status.lower()
+            chosen_id: str | None = None
+            for t in transitions:
+                # Match either the transition name (semantic workflows) OR the
+                # target status name (numeric/"Any"-named workflows). Jira
+                # Cloud's default software workflow uses the latter, which is
+                # why the old name-only match silently no-op'd.
+                to_name = t.get("to", {}).get("name", "")
+                if t.get("name", "").lower() == wanted or to_name.lower() == wanted:
+                    chosen_id = t["id"]
                     break
+            if chosen_id is None:
+                current_status = ""
+                try:
+                    current = await self.client.get_issue(task_id)
+                    current_status = (
+                        current.get("fields", {}).get("status", {}).get("name", "")
+                    )
+                except Exception:
+                    pass
+                available = [
+                    f"{t.get('name', '?')} -> {t.get('to', {}).get('name', '?')}"
+                    for t in transitions
+                ]
+                raise TransitionNotAvailableError(
+                    task_id=task_id,
+                    requested_status=status,
+                    current_status=current_status,
+                    available_transitions=available,
+                )
+            await self.client.transition_issue(task_id, chosen_id)
         issue = await self.client.get_issue(task_id)
         project_key = task_id.split("-")[0]
         return _parse_issue(issue, project_key)
+
+    async def get_issue(self, task_id: str) -> IssueDetail:
+        """Fetch an issue with expanded fields plus available transitions.
+
+        Returns an ``IssueDetail`` with description, labels, parent epic,
+        assignee, most-recent 20 comments, and the transitions reachable from
+        the current state. Clients (MCP tool ``library_pm_get_issue``) use
+        ``available_transitions[].to_status`` to decide the next legal move.
+        """
+        fields = (
+            "summary,status,labels,assignee,description,parent,comment,issuetype"
+        )
+        issue = await self.client.get_issue(task_id, fields=fields)
+        trans = await self.client.get_transitions(task_id)
+        return _parse_issue_detail(issue, trans)
 
     async def query_tasks(
         self,
@@ -234,5 +280,74 @@ def _parse_issue(data: dict, project_key: str) -> TaskResult:
         summary=fields.get("summary", ""),
         status=STATUS_MAP.get(status_name, TaskStatus.OPEN),
         labels=fields.get("labels", []),
+        url=data.get("self", ""),
+    )
+
+
+def _adf_to_text(node: dict | str | None) -> str:
+    """Flatten Atlassian Document Format to plain text. Tolerates str input."""
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+    if not isinstance(node, dict):
+        return ""
+    if node.get("type") == "text":
+        return node.get("text", "")
+    parts: list[str] = []
+    for child in node.get("content", []) or []:
+        parts.append(_adf_to_text(child))
+    text = "".join(parts)
+    if node.get("type") in ("paragraph", "heading"):
+        return text + "\n"
+    return text
+
+
+def _parse_issue_detail(data: dict, transitions_data: dict) -> IssueDetail:
+    """Parse a Jira issue + transitions response into IssueDetail.
+
+    Takes the most-recent 20 comments, renders description from ADF to plain
+    text, and lists each available transition's target status so clients can
+    pick a legal next move without re-querying.
+    """
+    fields = data.get("fields", {})
+    assignee_obj = fields.get("assignee")
+    assignee = (
+        assignee_obj.get("displayName") or assignee_obj.get("accountId")
+        if isinstance(assignee_obj, dict)
+        else None
+    )
+    parent_obj = fields.get("parent")
+    parent = parent_obj.get("key") if isinstance(parent_obj, dict) else None
+
+    raw_comments = (fields.get("comment") or {}).get("comments", []) or []
+    recent = raw_comments[-20:]
+    comments = [
+        IssueComment(
+            author=(c.get("author") or {}).get("displayName", ""),
+            created=c.get("created", ""),
+            body=_adf_to_text(c.get("body")).rstrip("\n"),
+        )
+        for c in recent
+    ]
+
+    available = [
+        IssueTransitionOption(
+            name=t.get("name", ""),
+            to_status=t.get("to", {}).get("name", ""),
+        )
+        for t in transitions_data.get("transitions", [])
+    ]
+
+    return IssueDetail(
+        id=data.get("key", ""),
+        summary=fields.get("summary", ""),
+        description=_adf_to_text(fields.get("description")).rstrip("\n"),
+        status=fields.get("status", {}).get("name", ""),
+        labels=fields.get("labels", []) or [],
+        parent=parent,
+        assignee=assignee,
+        comments=comments,
+        available_transitions=available,
         url=data.get("self", ""),
     )
