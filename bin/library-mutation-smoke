@@ -116,10 +116,39 @@ def _restore(mutation: Mutation, original: str) -> None:
     mutation.file.write_text(original)
 
 
+def _clear_pycache() -> None:
+    """Delete every __pycache__ under the scope dir plus tests/.
+
+    Mutations rewrite .py files under SCOPE_DIR. If a prior subprocess
+    compiled a mutated module, its .pyc can be served to the next run
+    (same mtime bucket, different content). Clear all pycache entries
+    before/after each mutation to eliminate that leak.
+    """
+    for base in (SCOPE_DIR, ROOT / "src" / "library_server", ROOT / "tests"):
+        for cache_dir in base.rglob("__pycache__"):
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 def _run_scoped_tests() -> bool:
-    """Return True if tests pass (mutant survived)."""
-    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "-o", "addopts=", *SCOPED_TESTS]
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    """Return True if tests pass (mutant survived).
+
+    Clears __pycache__ before running so stale .pyc from a prior mutation
+    can't mask the current one (source-level flip but pyc-level unchanged).
+    """
+    _clear_pycache()
+    cmd = [
+        sys.executable,
+        "-B",  # don't write .pyc files at all during mutation runs
+        "-m",
+        "pytest",
+        "-q",
+        "-x",
+        "-o",
+        "addopts=",
+        *SCOPED_TESTS,
+    ]
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     return result.returncode == 0
 
 
@@ -159,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
             still_passing = _run_scoped_tests()
         finally:
             _restore(m, original)
+            # Clear pycache AFTER restore too, so a subsequent non-mutation
+            # test run can't pick up the mutated bytecode we just rolled back.
+            _clear_pycache()
         marker = "SURVIVED" if still_passing else "killed"
         print(f"  [{i}/{len(mutations)}] {marker}: {m.describe()}")
         if still_passing:

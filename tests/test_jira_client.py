@@ -437,3 +437,77 @@ class TestUserMethods:
                 params={"query": "test"},
             )
             assert len(result) == 1
+
+
+class TestAssignWorkflowScheme:
+    """assign_workflow_scheme looks up the scheme by name and assigns it."""
+
+    @pytest.mark.asyncio
+    async def test_assigns_matching_scheme(self, client: JiraClient):
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.side_effect = [
+                {"values": [{"id": "10", "name": "Other"}, {"id": "42", "name": "SevenBelow Standard SDLC Workflow"}]},
+                {},  # PUT response
+            ]
+            await client.assign_workflow_scheme("12345", "SevenBelow Standard SDLC Workflow")
+
+            assert mock_req.call_count == 2
+            # Second call must use the matched scheme id (42), not the first (10)
+            put_call = mock_req.call_args_list[1]
+            assert put_call.kwargs["json"] == {"workflowSchemeId": "42", "projectId": "12345"}
+
+    @pytest.mark.asyncio
+    async def test_is_case_insensitive(self, client: JiraClient):
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.side_effect = [
+                {"values": [{"id": "99", "name": "My Scheme"}]},
+                {},
+            ]
+            await client.assign_workflow_scheme("p1", "MY SCHEME")
+            put_call = mock_req.call_args_list[1]
+            assert put_call.kwargs["json"] == {"workflowSchemeId": "99", "projectId": "p1"}
+
+    @pytest.mark.asyncio
+    async def test_raises_when_scheme_not_found(self, client: JiraClient):
+        """Missing scheme must raise ValueError listing available schemes — silent
+        no-op would leave the project on the default workflow without warning."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {"values": [{"id": "1", "name": "Alpha"}, {"id": "2", "name": "Beta"}]}
+            with pytest.raises(ValueError) as exc_info:
+                await client.assign_workflow_scheme("p1", "Gamma")
+            msg = str(exc_info.value)
+            assert "Gamma" in msg
+            assert "Alpha" in msg and "Beta" in msg
+
+
+class TestGetEpicNameFieldId:
+    """get_epic_name_field_id resolves the custom field via case-insensitive match."""
+
+    @pytest.mark.asyncio
+    async def test_matches_epic_name_case_insensitive(self, client: JiraClient):
+        client.get_fields = AsyncMock(return_value=[
+            {"id": "customfield_1", "name": "Other"},
+            {"id": "customfield_99", "name": "Epic Name"},
+        ])
+        result = await client.get_epic_name_field_id()
+        assert result == "customfield_99"
+
+    @pytest.mark.asyncio
+    async def test_does_not_match_unrelated_name(self, client: JiraClient):
+        """The filter must be the literal 'epic name' — nothing else. If it
+        flipped to `!=`, this test fails because 'Epic Link' would match."""
+        client.get_fields = AsyncMock(return_value=[
+            {"id": "customfield_50", "name": "Epic Link"},
+            {"id": "customfield_51", "name": "Story Points"},
+        ])
+        result = await client.get_epic_name_field_id()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_cached_value(self, client: JiraClient):
+        """Second call must use the cached value, not re-fetch fields."""
+        client.get_fields = AsyncMock(return_value=[{"id": "cf_1", "name": "Epic Name"}])
+        first = await client.get_epic_name_field_id()
+        second = await client.get_epic_name_field_id()
+        assert first == second == "cf_1"
+        client.get_fields.assert_called_once()
