@@ -241,6 +241,40 @@ class TestIssueMethods:
             )
 
     @pytest.mark.asyncio
+    async def test_delete_issue_default_subtasks_true(self, client: JiraClient):
+        """delete_issue() hits DELETE /rest/api/3/issue/{key} with deleteSubtasks=true."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = None
+            result = await client.delete_issue("COS-42")
+            mock_req.assert_called_once_with(
+                "DELETE",
+                "/rest/api/3/issue/COS-42",
+                params={"deleteSubtasks": "true"},
+            )
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_delete_issue_subtasks_false(self, client: JiraClient):
+        """delete_issue(delete_subtasks=False) passes deleteSubtasks=false."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = None
+            await client.delete_issue("COS-42", delete_subtasks=False)
+            params = mock_req.call_args[1]["params"]
+            assert params["deleteSubtasks"] == "false"
+
+    @pytest.mark.asyncio
+    async def test_delete_project(self, client: JiraClient):
+        """delete_project() hits DELETE /rest/api/3/project/{key}."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = None
+            result = await client.delete_project("ZZTABCD")
+            mock_req.assert_called_once_with(
+                "DELETE",
+                "/rest/api/3/project/ZZTABCD",
+            )
+            assert result is None
+
+    @pytest.mark.asyncio
     async def test_search_issues(self, client: JiraClient):
         with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
             mock_req.return_value = {"issues": [], "total": 0}
