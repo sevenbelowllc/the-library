@@ -113,6 +113,35 @@ Use [GitHub Issues](https://github.com/sevenbelowllc/the-library/issues). Includ
 - Python version (`python3 --version`)
 - OS
 
+## Testing standard
+
+This repo follows the SevenBelow Compliance OS
+[Testing Standard](https://github.com/sevenbelowllc/compliance-os/blob/main/library-reading-room/standards/TESTING-STANDARD.md)
+(`library-reading-room/standards/TESTING-STANDARD.md`). Highlights:
+
+- **Line coverage floor: 90%.** Behavioural coverage is the rule — every
+  error path must be asserted, every state transition walked.
+- **Coverage ratchet.** CI compares current coverage to
+  `coverage-baseline.txt`. Any drop fails the build.
+  - Enforce: `bin/library-coverage-ratchet`
+  - Bump baseline (after an intentional improvement):
+    `bin/library-coverage-ratchet --bump`
+- **Mutation smoke.** Critical adapters and state-machine code must pass
+  mutation testing — `src/library_server/pm/` is currently in scope.
+  Strategies: flip conditional (`==` <-> `!=`), remove `assert`/`raise`,
+  flip boolean literal. If any mutant survives, add a negative test.
+  - Run: `bin/library-mutation-smoke`
+  - List candidates without running: `bin/library-mutation-smoke --list`
+- **Cleanup is mandatory.** Every test that creates external state
+  (Jira tickets, projects, DB rows, GCS objects) must register teardown
+  that runs on pass, fail, timeout, and SIGINT. Use `try/finally` in
+  `yield`-based pytest fixtures — see `tests/test_jira_integration.py`
+  for the canonical `jira_cleanup` pattern.
+- **Pollution scan.** `bin/library-pm-pollution-scan` (dry-run by
+  default) surfaces stale `INTEGRATION-TEST` / `DELETE-ME` / `ZZT*`
+  artefacts older than 24h. `--execute` requires interactive
+  confirmation.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
