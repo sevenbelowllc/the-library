@@ -44,6 +44,27 @@ class TestJiraAdapter:
         assert result.summary == "Test task"
         assert result.project_key == "PROJ"
         adapter.client.create_issue.assert_called_once()
+        call_kwargs = adapter.client.create_issue.call_args.kwargs
+        assert call_kwargs["parent_key"] == ""
+
+    @pytest.mark.asyncio
+    async def test_create_task_with_epic(self, monkeypatch):
+        """create_task should pass epic_id as parent_key to the Jira client."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.create_issue = AsyncMock(return_value={
+            "key": "PROJ-124",
+            "self": "https://test.atlassian.net/rest/api/3/issue/PROJ-124",
+        })
+
+        result = await adapter.create_task(
+            "PROJ", "Child task", "desc", labels=[], epic_id="PROJ-E1"
+        )
+        assert result.task_id == "PROJ-124"
+        assert result.summary == "Child task"
+        call_kwargs = adapter.client.create_issue.call_args.kwargs
+        assert call_kwargs["parent_key"] == "PROJ-E1"
 
     @pytest.mark.asyncio
     async def test_create_epic(self, monkeypatch):

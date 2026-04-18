@@ -219,7 +219,9 @@ class TestPMTools:
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_create_task("PROJ", "Test", "Desc", "label1,label2")
             assert result["task_id"] == "PROJ-1"
-            mock_adapter.create_task.assert_called_once_with("PROJ", "Test", "Desc", ["label1", "label2"])
+            mock_adapter.create_task.assert_called_once_with(
+                "PROJ", "Test", "Desc", ["label1", "label2"], epic_id=""
+            )
 
     @pytest.mark.asyncio
     async def test_pm_create_task_no_labels(self):
@@ -229,7 +231,19 @@ class TestPMTools:
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             result = await library_pm_create_task("PROJ", "Test", "Desc")
-            mock_adapter.create_task.assert_called_once_with("PROJ", "Test", "Desc", [])
+            mock_adapter.create_task.assert_called_once_with("PROJ", "Test", "Desc", [], epic_id="")
+
+    @pytest.mark.asyncio
+    async def test_pm_create_task_with_epic(self):
+        mock_adapter = AsyncMock()
+        mock_adapter.create_task.return_value = TaskResult(
+            task_id="PROJ-5", project_key="PROJ", summary="Child", status=TaskStatus.OPEN, url=""
+        )
+        with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
+            await library_pm_create_task("PROJ", "Child", "Desc", "", epic_id="PROJ-1")
+            mock_adapter.create_task.assert_called_once_with(
+                "PROJ", "Child", "Desc", [], epic_id="PROJ-1"
+            )
 
     @pytest.mark.asyncio
     async def test_pm_create_epic(self):

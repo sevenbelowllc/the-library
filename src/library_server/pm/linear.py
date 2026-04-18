@@ -60,7 +60,11 @@ class LinearAdapter(PMAdapter):
         summary: str,
         description: str,
         labels: list[str] | None = None,
+        epic_id: str = "",
     ) -> TaskResult:
+        input_payload: dict = {"title": summary, "description": description, "teamId": project_key}
+        if epic_id:
+            input_payload["parentId"] = epic_id
         result = await self._graphql(
             """
             mutation($input: IssueCreateInput!) {
@@ -75,7 +79,7 @@ class LinearAdapter(PMAdapter):
                 }
             }
             """,
-            {"input": {"title": summary, "description": description, "teamId": project_key}},
+            {"input": input_payload},
         )
         issue = result["data"]["issueCreate"]["issue"]
         return TaskResult(
