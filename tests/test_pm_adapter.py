@@ -820,3 +820,31 @@ class TestLinearAdapterExtended:
         adapter = LinearAdapter(api_key="test-key")
         with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
             await adapter.link_issues("Blocks", "PROJ-1", "PROJ-2")
+
+    @pytest.mark.asyncio
+    async def test_get_project_not_supported(self):
+        """get_project should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.get_project("TEAM-1")
+
+    @pytest.mark.asyncio
+    async def test_update_project_not_supported(self):
+        """update_project should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.update_project("TEAM-1", name="New")
+
+    @pytest.mark.asyncio
+    async def test_get_link_types_not_supported(self):
+        """get_link_types should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.get_link_types()
+
+    @pytest.mark.asyncio
+    async def test_get_issue_not_supported(self):
+        """get_issue should raise NotImplementedError."""
+        adapter = LinearAdapter(api_key="test-key")
+        with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
+            await adapter.get_issue("PROJ-1")
