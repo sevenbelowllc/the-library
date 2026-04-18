@@ -97,6 +97,7 @@ class TestCheckpointTools:
     def test_checkpoint_write(self):
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
+             patch("library_server.server.resolve_checkpoint_dir", return_value=Path("/tmp/checkpoints")), \
              patch("library_server.checkpoint.checkpoint.write_checkpoint", return_value={"status": "written"}) as mock_write:
             result = library_checkpoint_write(
                 topic="test",
@@ -117,6 +118,7 @@ class TestCheckpointTools:
     def test_checkpoint_write_empty_lists(self):
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
+             patch("library_server.server.resolve_checkpoint_dir", return_value=Path("/tmp/checkpoints")), \
              patch("library_server.checkpoint.checkpoint.write_checkpoint", return_value={"status": "written"}) as mock_write:
             result = library_checkpoint_write(
                 topic="test",
@@ -128,6 +130,15 @@ class TestCheckpointTools:
             assert data.next_actions == []
             assert data.key_context == []
 
+    def test_checkpoint_write_errors_when_misconfigured(self):
+        """Hard rule: missing reading_room.path returns an error, not a silent fallback."""
+        mock_cfg = _make_config_mock()
+        with patch("library_server.server.get_config", return_value=mock_cfg), \
+             patch("library_server.server.resolve_checkpoint_dir", side_effect=ValueError("reading_room.path is not configured")):
+            result = library_checkpoint_write(topic="t", status="s", next_session="n")
+            assert result["status"] == "error"
+            assert "reading_room.path" in result["error"]
+
     def test_checkpoint_read(self):
         with patch("library_server.checkpoint.checkpoint.read_checkpoint", return_value={"topic": "test"}):
             result = library_checkpoint_read("/tmp/cp.md")
@@ -136,6 +147,7 @@ class TestCheckpointTools:
     def test_checkpoint_list_default_path(self):
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
+             patch("library_server.server.resolve_checkpoint_dir", return_value=Path("/tmp/checkpoints")), \
              patch("library_server.checkpoint.checkpoint.list_checkpoints", return_value={"checkpoints": []}) as mock_list:
             result = library_checkpoint_list()
             mock_list.assert_called_once_with("/tmp/checkpoints")

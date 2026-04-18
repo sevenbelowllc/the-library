@@ -36,6 +36,44 @@ class LibraryConfig:
             yaml.dump(self.raw, f, default_flow_style=False, sort_keys=False)
 
 
+def resolve_checkpoint_dir(config: LibraryConfig) -> Path:
+    """Resolve the checkpoint directory, enforcing the Reading Room boundary.
+
+    Hard rule: checkpoints MUST live under reading_room.path. The directory is
+    auto-created. If checkpoints.path is set, it is validated to resolve under
+    reading_room.path; otherwise, it defaults to <reading_room.path>/checkpoints.
+
+    Raises:
+        ValueError: if reading_room.path is not configured, or if an explicit
+        checkpoints.path resolves outside the Reading Room.
+    """
+    reading_room = config.get_section("reading_room").get("path")
+    if not reading_room:
+        raise ValueError(
+            "reading_room.path is not configured. The Library requires a Reading "
+            "Room before checkpoints can be written. Set reading_room.path in "
+            "library-config.yaml."
+        )
+
+    config_dir = config.path.parent if config.path else Path.cwd()
+    rr_path = (config_dir / reading_room).resolve() if not Path(reading_room).is_absolute() else Path(reading_room).resolve()
+
+    explicit = config.get_section("checkpoints").get("path")
+    if explicit:
+        cp_path = (config_dir / explicit).resolve() if not Path(explicit).is_absolute() else Path(explicit).resolve()
+        if not (cp_path == rr_path or rr_path in cp_path.parents):
+            raise ValueError(
+                f"checkpoints.path ({cp_path}) must live under reading_room.path "
+                f"({rr_path}). The Library enforces this so all session artifacts "
+                f"stay co-located with the Reading Room."
+            )
+    else:
+        cp_path = rr_path / "checkpoints"
+
+    cp_path.mkdir(parents=True, exist_ok=True)
+    return cp_path
+
+
 def load_config(config_path: Path | None = None) -> LibraryConfig:
     """Load config from yaml file. Returns empty config if file doesn't exist."""
     path = config_path or Path.cwd() / CONFIG_FILENAME

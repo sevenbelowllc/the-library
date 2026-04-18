@@ -102,6 +102,10 @@ Resume from the checkpoint's "What's Next" section. Read referenced files and re
 **Estimated context cost:** ~1500 tokens
 **Subagent delegation:** No
 
+## Storage Location (Hard Rule)
+
+Checkpoints **always** live under the Reading Room. By default the file is written to `<reading_room.path>/checkpoints/`. An explicit `checkpoints.path` in `library-config.yaml` is allowed but must resolve under `reading_room.path` — anything else is rejected with an error. There is no silent fallback to the MCP server's CWD.
+
 ## MCP Tools Used
 
 - `library:checkpoint:write` — write structured checkpoint file

@@ -1,6 +1,6 @@
 [project]
 name = "the-library"
-version = "0.3.0"
+version = "0.3.1"
 description = "Open-source meta-system for AI-assisted project management. MCP server + Claude Code skills."
 readme = "README.md"
 license = {text = "MIT"}

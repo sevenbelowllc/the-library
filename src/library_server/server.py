@@ -4,7 +4,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from library_server.config import load_config, LibraryConfig
+from library_server.config import load_config, resolve_checkpoint_dir, LibraryConfig
 
 mcp = FastMCP(
     "library",
@@ -62,8 +62,11 @@ def library_checkpoint_write(
         next_actions=[s.strip() for s in next_actions.split(";") if s.strip()] if next_actions else [],
         key_context=[s.strip() for s in key_context.split(";") if s.strip()] if key_context else [],
     )
-    checkpoint_path = get_config().get_section("checkpoints").get("path", "./checkpoints")
-    return write_checkpoint(checkpoint_path, data)
+    try:
+        checkpoint_dir = resolve_checkpoint_dir(get_config())
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+    return write_checkpoint(str(checkpoint_dir), data)
 
 
 @mcp.tool(name="library_checkpoint_read")
@@ -78,7 +81,10 @@ def library_checkpoint_list(checkpoint_dir: str = "") -> dict:
     """List all checkpoint files. Uses config path if no directory specified."""
     from library_server.checkpoint.checkpoint import list_checkpoints
     if not checkpoint_dir:
-        checkpoint_dir = get_config().get_section("checkpoints").get("path", "./checkpoints")
+        try:
+            checkpoint_dir = str(resolve_checkpoint_dir(get_config()))
+        except ValueError as e:
+            return {"checkpoints": [], "error": str(e)}
     return list_checkpoints(checkpoint_dir)
 
 

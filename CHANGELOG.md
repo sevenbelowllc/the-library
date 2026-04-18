@@ -4,6 +4,18 @@ All notable changes to The Library are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-04-17
+
+### Added
+- **Reading Room boundary for checkpoints (hard rule)**: `resolve_checkpoint_dir()` enforces that checkpoint files always land under `reading_room.path`. If `checkpoints.path` is unset, defaults to `<reading_room.path>/checkpoints`; if set, validated to resolve under the Reading Room.
+- **Topic slugification**: `library_checkpoint_write` sanitizes topics to kebab-case so filenames are always shell-safe (no spaces, em dashes, or mixed case).
+
+### Changed
+- `library_checkpoint_write` and `library_checkpoint_list` now require `reading_room.path` to be configured. They return a structured error instead of silently falling back to `./checkpoints` relative to the MCP server's CWD.
+
+### Fixed
+- Root cause for orphaned checkpoint files appearing at the MCP server's CWD instead of the Reading Room.
+
 ## [0.3.0] - 2026-04-12
 
 ### Added

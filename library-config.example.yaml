@@ -15,6 +15,12 @@ reading_room:
   #   plans/        — implementation plans
   #   checkpoints/  — session checkpoints
 
+# Checkpoint storage. Optional — defaults to <reading_room.path>/checkpoints.
+# HARD RULE: any explicit path MUST resolve under reading_room.path. The Library
+# refuses to write checkpoints outside the Reading Room.
+# checkpoints:
+#   path: "./my-reading-room/checkpoints"
+
 # Knowledge base (Obsidian-native, Karpathy 3-layer pattern)
 vault:
   path: "./knowledge-base"              # where the vault lives (or will be created)
