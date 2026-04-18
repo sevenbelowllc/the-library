@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""library-pm-pollution-scan — find (and optionally delete) stale test artefacts.
+
+Scans Jira for tickets and projects left behind by integration tests:
+  * tickets whose summary matches INTEGRATION-TEST or DELETE-ME and are >24h old
+  * projects whose key matches ZZT* or whose name contains
+    INTEGRATION-TEST / DELETE-ME
+
+By default the tool is READ-ONLY (--dry-run). --execute requires interactive
+confirmation before any delete is performed. NEVER deletes without human
+sign-off. See TESTING-STANDARD.md §4.
+
+Usage:
+    JIRA_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan
+    JIRA_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan --execute
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+import sys
+from dataclasses import dataclass
+from typing import Any
+
+# Make the src/ layout importable when run straight from the worktree.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SRC = os.path.abspath(os.path.join(_HERE, "..", "src"))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from library_server.pm.jira_client import JiraApiError, JiraClient  # noqa: E402
+
+
+SITE_URL = os.environ.get("JIRA_SITE_URL", "https://sevenbelow.atlassian.net")
+
+# JQL: summary matches markers, created more than 24h ago.
+POLLUTION_JQL = (
+    '(summary ~ "INTEGRATION-TEST" OR summary ~ "DELETE-ME") AND created < -24h'
+)
+
+
+@dataclass
+class PollutionReport:
+    tickets: list[dict[str, Any]]
+    projects: list[dict[str, Any]]
+
+    @property
+    def ticket_count(self) -> int:
+        return len(self.tickets)
+
+    @property
+    def project_count(self) -> int:
+        return len(self.projects)
+
+
+def _is_polluted_project(project: dict[str, Any]) -> bool:
+    """Return True iff this project matches the pollution markers."""
+    key = project.get("key", "")
+    name = project.get("name", "")
+    if key.startswith("ZZT"):
+        return True
+    upper_name = name.upper()
+    if "INTEGRATION-TEST" in upper_name or "DELETE-ME" in upper_name:
+        return True
+    return False
+
+
+def filter_polluted_projects(projects_response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pure filter, easily unit-tested against fixture JSON."""
+    values = projects_response.get("values", [])
+    return [p for p in values if _is_polluted_project(p)]
+
+
+def filter_polluted_issues(search_response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the issues list from a /search/jql response verbatim.
+
+    Filtering is done server-side by JQL; this accessor exists so tests can
+    assert the adapter wires results through correctly.
+    """
+    return list(search_response.get("issues", []))
+
+
+async def scan(client: JiraClient) -> PollutionReport:
+    """Run both queries and assemble a report."""
+    search = await client.search_issues(jql=POLLUTION_JQL, max_results=100)
+    tickets = filter_polluted_issues(search)
+
+    # list_projects returns at most 50 per page; iterate.
+    all_projects: list[dict[str, Any]] = []
+    start_at = 0
+    while True:
+        page = await client.list_projects(max_results=50, start_at=start_at)
+        vals = page.get("values", [])
+        all_projects.extend(vals)
+        if len(vals) < 50:
+            break
+        start_at += 50
+    projects = filter_polluted_projects({"values": all_projects})
+
+    return PollutionReport(tickets=tickets, projects=projects)
+
+
+def _print_report(report: PollutionReport) -> None:
+    print(f"\nPollution scan result (site: {SITE_URL})")
+    print(f"  Tickets matching pollution markers: {report.ticket_count}")
+    print(f"  Projects matching pollution markers: {report.project_count}")
+    if report.tickets:
+        print("\n  Tickets:")
+        for t in report.tickets:
+            key = t.get("key", "?")
+            summary = t.get("fields", {}).get("summary", "?")
+            print(f"    - {key}: {summary}")
+    if report.projects:
+        print("\n  Projects:")
+        for p in report.projects:
+            print(f"    - {p.get('key', '?')}: {p.get('name', '?')}")
+
+
+async def _purge(client: JiraClient, report: PollutionReport) -> tuple[int, list[str]]:
+    """Delete every reported artefact. Returns (n_deleted, failures)."""
+    deleted = 0
+    failures: list[str] = []
+    for t in report.tickets:
+        key = t.get("key", "")
+        if not key:
+            continue
+        try:
+            await client.delete_issue(key)
+            deleted += 1
+            print(f"  deleted issue {key}")
+        except JiraApiError as e:
+            if e.status_code == 404:
+                continue
+            failures.append(f"issue {key}: {e}")
+    for p in report.projects:
+        pkey = p.get("key", "")
+        if not pkey:
+            continue
+        try:
+            await client.delete_project(pkey)
+            deleted += 1
+            print(f"  deleted project {pkey}")
+        except JiraApiError as e:
+            if e.status_code == 404:
+                continue
+            failures.append(f"project {pkey}: {e}")
+    return deleted, failures
+
+
+async def _amain(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually delete (requires interactive confirmation). Default is dry-run.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Explicit dry-run (default behaviour; kept for clarity).",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive confirmation when combined with --execute. "
+        "Reserved for CI environments that have already obtained sign-off.",
+    )
+    args = parser.parse_args(argv)
+
+    if not (os.environ.get("JIRA_EMAIL") and os.environ.get("JIRA_API_TOKEN")):
+        print("error: JIRA_EMAIL and JIRA_API_TOKEN must be set.", file=sys.stderr)
+        return 2
+
+    client = JiraClient(site_url=SITE_URL, timeout=30.0)
+    report = await scan(client)
+    _print_report(report)
+
+    if not args.execute:
+        print("\n[dry-run] No deletions performed. Re-run with --execute to purge.")
+        return 0
+
+    if report.ticket_count == 0 and report.project_count == 0:
+        print("\nNothing to delete.")
+        return 0
+
+    if not args.yes:
+        print("\n*** DESTRUCTIVE ACTION ***")
+        print(
+            f"Type 'DELETE {report.ticket_count} tickets and "
+            f"{report.project_count} projects' to confirm:"
+        )
+        expected = f"DELETE {report.ticket_count} tickets and {report.project_count} projects"
+        got = input("> ").strip()
+        if got != expected:
+            print("Confirmation did not match. Aborting.")
+            return 1
+
+    deleted, failures = await _purge(client, report)
+    print(f"\nDeleted: {deleted}")
+    if failures:
+        print(f"Failures: {len(failures)}")
+        for f in failures:
+            print(f"  - {f}")
+        return 1
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return asyncio.run(_amain(argv if argv is not None else sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

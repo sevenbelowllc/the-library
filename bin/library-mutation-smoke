@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""library-mutation-smoke — lightweight mutation testing for pm/ adapters.
+
+Scope: src/library_server/pm/ (adapter.py, jira.py, linear.py, jira_client.py).
+
+Strategy (per TESTING-STANDARD.md §1.3):
+  1. Flip conditionals: ``==`` <-> ``!=``, ``if X:`` -> ``if not X:``
+  2. Remove ``assert`` and ``raise`` statements.
+  3. Swap boolean constants ``True`` <-> ``False``.
+
+For each mutation we write it to disk, run the scoped test suite, then
+restore the original. If ANY mutant survives (tests still pass), CI fails.
+
+Intentionally simple — no AST rewriter, no dependency on mutmut. Good enough
+to catch the canonical silent-transition class of bug.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCOPE_DIR = ROOT / "src" / "library_server" / "pm"
+
+# Tests that exercise the pm/ scope. The jira_integration tests are skipped
+# without creds so they won't run the mutation check — that's fine; they test
+# live Jira, not the adapter logic we're mutating.
+SCOPED_TESTS = [
+    "tests/test_jira_client.py",
+    "tests/test_pm_adapter.py",
+]
+
+
+@dataclass
+class Mutation:
+    file: Path
+    line_no: int
+    old_line: str
+    new_line: str
+    strategy: str
+
+    def describe(self) -> str:
+        rel = self.file.relative_to(ROOT)
+        return f"{rel}:{self.line_no} [{self.strategy}] {self.old_line.strip()!r} -> {self.new_line.strip()!r}"
+
+
+def _mutations_for_line(path: Path, line_no: int, line: str) -> list[Mutation]:
+    """Return all possible mutations for a single line."""
+    out: list[Mutation] = []
+    stripped = line.rstrip("\n")
+
+    # Strategy 1a: swap `==` <-> `!=` (one swap per occurrence)
+    if "==" in stripped and "!=" not in stripped:
+        new = stripped.replace("==", "!=", 1)
+        out.append(Mutation(path, line_no, line, new + "\n", "flip_eq"))
+    elif "!=" in stripped and "==" not in stripped:
+        new = stripped.replace("!=", "==", 1)
+        out.append(Mutation(path, line_no, line, new + "\n", "flip_neq"))
+
+    # Strategy 2: remove `assert` / `raise`
+    m = re.match(r"^(\s*)(assert|raise)\b", stripped)
+    if m:
+        indent = m.group(1)
+        out.append(
+            Mutation(
+                path, line_no, line, f"{indent}pass  # MUTATED\n", f"remove_{m.group(2)}"
+            )
+        )
+
+    # Strategy 3: flip boolean literal (single occurrence)
+    if re.search(r"\bTrue\b", stripped):
+        new = re.sub(r"\bTrue\b", "False", stripped, count=1)
+        out.append(Mutation(path, line_no, line, new + "\n", "flip_true"))
+    elif re.search(r"\bFalse\b", stripped):
+        new = re.sub(r"\bFalse\b", "True", stripped, count=1)
+        out.append(Mutation(path, line_no, line, new + "\n", "flip_false"))
+
+    return out
+
+
+def _discover_mutations(max_per_file: int | None = None) -> list[Mutation]:
+    mutations: list[Mutation] = []
+    for py in sorted(SCOPE_DIR.glob("*.py")):
+        if py.name == "__init__.py":
+            continue
+        lines = py.read_text().splitlines(keepends=True)
+        per_file: list[Mutation] = []
+        for i, line in enumerate(lines, start=1):
+            # Skip comments / docstring lines.
+            if line.lstrip().startswith("#"):
+                continue
+            per_file.extend(_mutations_for_line(py, i, line))
+        if max_per_file is not None:
+            per_file = per_file[:max_per_file]
+        mutations.extend(per_file)
+    return mutations
+
+
+def _apply(mutation: Mutation) -> str:
+    """Write the mutation; return original file contents."""
+    original = mutation.file.read_text()
+    lines = original.splitlines(keepends=True)
+    lines[mutation.line_no - 1] = mutation.new_line
+    mutation.file.write_text("".join(lines))
+    return original
+
+
+def _restore(mutation: Mutation, original: str) -> None:
+    mutation.file.write_text(original)
+
+
+def _run_scoped_tests() -> bool:
+    """Return True if tests pass (mutant survived)."""
+    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "-o", "addopts=", *SCOPED_TESTS]
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    return result.returncode == 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--max-per-file",
+        type=int,
+        default=None,
+        help="Cap mutations per file (useful for fast local runs).",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Print the mutations that would be applied, then exit.",
+    )
+    args = parser.parse_args(argv)
+
+    mutations = _discover_mutations(max_per_file=args.max_per_file)
+    if args.list:
+        for m in mutations:
+            print(m.describe())
+        print(f"\ntotal: {len(mutations)}")
+        return 0
+
+    # Sanity: fail fast if scoped tests don't already pass.
+    print(f"baseline check: running {len(SCOPED_TESTS)} scoped test files ...")
+    if not _run_scoped_tests():
+        print("ERROR: scoped tests fail on clean tree. Fix those first.", file=sys.stderr)
+        return 2
+
+    survivors: list[Mutation] = []
+    print(f"running {len(mutations)} mutations against scoped tests ...")
+    for i, m in enumerate(mutations, start=1):
+        original = _apply(m)
+        try:
+            still_passing = _run_scoped_tests()
+        finally:
+            _restore(m, original)
+        marker = "SURVIVED" if still_passing else "killed"
+        print(f"  [{i}/{len(mutations)}] {marker}: {m.describe()}")
+        if still_passing:
+            survivors.append(m)
+
+    print(f"\nsummary: {len(mutations) - len(survivors)} killed, {len(survivors)} survived")
+    if survivors:
+        print("\nSurviving mutants (tests did not fail):", file=sys.stderr)
+        for m in survivors:
+            print(f"  {m.describe()}", file=sys.stderr)
+        print(
+            "\nAdd a negative test per surviving mutant. See TESTING-STANDARD.md §1.3.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

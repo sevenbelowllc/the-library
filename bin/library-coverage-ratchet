@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""library-coverage-ratchet — fail CI if line coverage drops below baseline.
+
+Runs the test suite under coverage, reads the reported total percentage,
+compares to ``coverage-baseline.txt`` at the repo root, and exits non-zero
+if the current value is less than the baseline minus the configured tolerance
+(default 0.00 — any drop fails).
+
+Usage:
+    bin/library-coverage-ratchet                # enforce ratchet
+    bin/library-coverage-ratchet --bump         # update baseline to current
+    bin/library-coverage-ratchet --tolerance 0.1  # allow 0.1pp slack
+
+Per TESTING-STANDARD.md §1.1 the hard floor is still 90% line coverage.
+This ratchet enforces the "no-drop" half of that rule.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BASELINE = ROOT / "coverage-baseline.txt"
+
+
+def _run_coverage() -> float:
+    """Run the test suite with coverage and return the total % as a float."""
+    env = os.environ.copy()
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "--ignore=tests/vault_builder/integration",
+        "--ignore=tests/test_jira_integration.py",
+        "-o",
+        "addopts=--cov=src/library_server --cov-report=",
+    ]
+    # We invoke `coverage report --format=total` after pytest to get a single
+    # number; pytest-cov writes .coverage in the cwd by default.
+    result = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise SystemExit(f"pytest failed (exit {result.returncode})")
+
+    report = subprocess.run(
+        [sys.executable, "-m", "coverage", "report", "--format=total"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if report.returncode != 0:
+        sys.stderr.write(report.stderr)
+        raise SystemExit("coverage report failed")
+    return float(report.stdout.strip())
+
+
+def read_baseline() -> float:
+    if not BASELINE.exists():
+        raise SystemExit(
+            f"baseline file missing: {BASELINE}. "
+            "Run `bin/library-coverage-ratchet --bump` after the first green run."
+        )
+    return float(BASELINE.read_text().strip())
+
+
+def write_baseline(value: float) -> None:
+    BASELINE.write_text(f"{value:.2f}\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bump", action="store_true", help="Update baseline to current.")
+    parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.0,
+        help="Allowed drop in percentage points (default 0.0).",
+    )
+    parser.add_argument(
+        "--current",
+        type=float,
+        help="Use this value as current coverage instead of running pytest "
+        "(useful in CI that already ran the suite).",
+    )
+    args = parser.parse_args(argv)
+
+    current = args.current if args.current is not None else _run_coverage()
+
+    if args.bump:
+        write_baseline(current)
+        print(f"baseline updated: {current:.2f}%")
+        return 0
+
+    baseline = read_baseline()
+    delta = current - baseline
+    print(f"coverage: current={current:.2f}% baseline={baseline:.2f}% delta={delta:+.2f}pp")
+    if delta < -args.tolerance:
+        print(
+            f"ERROR: coverage dropped by {-delta:.2f}pp (tolerance {args.tolerance:.2f}pp). "
+            "Add tests or justify the drop.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
