@@ -67,6 +67,39 @@ class Transition:
 
 
 @dataclass
+class IssueComment:
+    author: str
+    created: str
+    body: str
+
+
+@dataclass
+class IssueTransitionOption:
+    name: str
+    to_status: str
+
+
+@dataclass
+class IssueDetail:
+    """Full detail for an issue, returned by ``PMAdapter.get_issue``.
+
+    Fields mirror the Jira "view" surface plus available transitions, so MCP
+    callers can inspect an issue and decide the next workflow move without a
+    round-trip to ``get_transitions``.
+    """
+    id: str
+    summary: str
+    description: str
+    status: str
+    labels: list[str] = field(default_factory=list)
+    parent: str | None = None
+    assignee: str | None = None
+    comments: list[IssueComment] = field(default_factory=list)
+    available_transitions: list[IssueTransitionOption] = field(default_factory=list)
+    url: str = ""
+
+
+@dataclass
 class VaultTag:
     tag_type: str  # VERIFY, CONFLICT, PLANNED
     content: str

@@ -186,10 +186,59 @@ async def library_pm_sync(project_key: str) -> dict:
 
 @mcp.tool(name="library_pm_update")
 async def library_pm_update(task_id: str, status: str = "", comment: str = "") -> dict:
-    """Update a task's status or add a comment."""
+    """Update a task's status or add a comment.
+
+    If ``status`` is provided but no matching transition exists, this returns a
+    structured error object instead of silently succeeding with stale state:
+    ``{"error": "transition_not_available", "task_id": ..., "current_status": ...,
+    "requested_status": ..., "available_transitions": [...]}``.
+    """
+    from library_server.pm.adapter import TransitionNotAvailableError
+
     adapter = _get_pm_adapter()
-    result = await adapter.update_task(task_id, status or None, comment or None)
+    try:
+        result = await adapter.update_task(task_id, status or None, comment or None)
+    except TransitionNotAvailableError as e:
+        return {
+            "error": "transition_not_available",
+            "task_id": e.task_id,
+            "requested_status": e.requested_status,
+            "current_status": e.current_status,
+            "available_transitions": e.available_transitions,
+            "message": str(e),
+        }
     return {"task_id": result.task_id, "status": result.status.value}
+
+
+@mcp.tool(name="library_pm_get_issue")
+async def library_pm_get_issue(task_id: str) -> dict:
+    """Fetch full detail for an issue — fields, comments, available transitions.
+
+    Returns an IssueDetail serialized as a dict with: id, summary, description,
+    status, labels, parent, assignee, comments (up to 20 most recent), and
+    available_transitions (list of {name, to_status}) that callers can use to
+    decide the next workflow move.
+    """
+    adapter = _get_pm_adapter()
+    detail = await adapter.get_issue(task_id)
+    return {
+        "id": detail.id,
+        "summary": detail.summary,
+        "description": detail.description,
+        "status": detail.status,
+        "labels": detail.labels,
+        "parent": detail.parent,
+        "assignee": detail.assignee,
+        "comments": [
+            {"author": c.author, "created": c.created, "body": c.body}
+            for c in detail.comments
+        ],
+        "available_transitions": [
+            {"name": t.name, "to_status": t.to_status}
+            for t in detail.available_transitions
+        ],
+        "url": detail.url,
+    }
 
 
 @mcp.tool(name="library_pm_query")
