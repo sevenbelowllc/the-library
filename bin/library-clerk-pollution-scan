@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""library-clerk-pollution-scan — find (and optionally delete) stale Clerk test users + orgs.
+
+Scans a Clerk instance (default: the one identified by ``CLERK_SECRET_KEY``)
+for users and organizations left behind by integration / E2E tests:
+  * users whose primary email starts with an e2e pollution marker
+    (e.g. ``e2e-``, ``e2e.``) and are older than --min-age-hours
+  * organizations whose name matches the same markers
+
+By default the tool is READ-ONLY (--dry-run). --execute requires interactive
+confirmation OR ``--yes --confirm-count=N`` matching the scan's exact count.
+NEVER deletes without human sign-off. See TESTING-STANDARD.md §4.
+
+Usage:
+    CLERK_SECRET_KEY=... bin/library-clerk-pollution-scan
+    CLERK_SECRET_KEY=... bin/library-clerk-pollution-scan --min-age-hours 6
+    CLERK_SECRET_KEY=... bin/library-clerk-pollution-scan --execute
+    CLERK_SECRET_KEY=... bin/library-clerk-pollution-scan --execute --yes --confirm-count 97
+
+Clerk Backend REST docs: https://clerk.com/docs/reference/backend-api
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+import sys
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+try:
+    import httpx
+except ImportError:
+    print("error: httpx is required. `pip install httpx` or use the-library venv.",
+          file=sys.stderr)
+    sys.exit(2)
+
+
+CLERK_API_BASE = os.environ.get("CLERK_API_BASE", "https://api.clerk.com/v1")
+
+# Client-side precision filter. Clerk's `?query=` is a substring match across
+# many fields, so we cast a wide net at the API and narrow here — a real user
+# whose email happens to contain "e2e" (e.g. "bob.e2easton@real.com") must
+# not be purged.
+_USER_EMAIL_PREFIXES = (
+    "e2e-",        # e2e-test@, e2e-owner-<ts>@
+    "e2e.",        # e2e.admin@
+    "e2e_",        # e2e_employee@
+    "e2etest",     # e2etest1@, e2etest-owner@
+)
+
+_ORG_NAME_PREFIXES = (
+    "e2e-",
+    "e2e.",
+    "e2e_",
+    "e2e tenant",
+    "e2etest",
+    "test-tenant-e2e",
+)
+
+
+def _is_polluted_email(email: str) -> bool:
+    """Email must START with a pollution prefix (case-insensitive).
+
+    Matches ``e2e-owner-1234567890@sevenbelow.com`` but NOT
+    ``bob.e2easton@real.com`` (marker as mid-string substring).
+    """
+    if not email:
+        return False
+    local = email.split("@", 1)[0].lower()
+    return any(local.startswith(p) for p in _USER_EMAIL_PREFIXES)
+
+
+def _is_polluted_org(name: str) -> bool:
+    """Org name must START with a pollution prefix (case-insensitive)."""
+    if not name:
+        return False
+    lo = name.strip().lower()
+    return any(lo.startswith(p) for p in _ORG_NAME_PREFIXES)
+
+
+@dataclass
+class PollutionReport:
+    users: list[dict[str, Any]] = field(default_factory=list)
+    orgs: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def user_count(self) -> int:
+        return len(self.users)
+
+    @property
+    def org_count(self) -> int:
+        return len(self.orgs)
+
+    @property
+    def total(self) -> int:
+        return self.user_count + self.org_count
+
+
+def _primary_email(user: dict[str, Any]) -> str:
+    """Return user.primary_email_address or the first email as a fallback."""
+    primary_id = user.get("primary_email_address_id")
+    emails = user.get("email_addresses") or []
+    for e in emails:
+        if e.get("id") == primary_id:
+            return e.get("email_address", "")
+    if emails:
+        return emails[0].get("email_address", "")
+    return ""
+
+
+def _is_older_than(created_at_ms: Any, min_age_hours: int) -> bool:
+    """Clerk `created_at` is unix-ms. Returns True if older than threshold."""
+    if min_age_hours <= 0:
+        return True
+    if not isinstance(created_at_ms, (int, float)):
+        return True  # missing timestamp → treat as old, don't block a purge
+    age_sec = (time.time() * 1000 - float(created_at_ms)) / 1000.0
+    return age_sec >= min_age_hours * 3600
+
+
+def filter_polluted_users(users: list[dict[str, Any]], min_age_hours: int) -> list[dict[str, Any]]:
+    """Pure filter, easily unit-tested against fixture JSON."""
+    out: list[dict[str, Any]] = []
+    for u in users:
+        email = _primary_email(u)
+        if not _is_polluted_email(email):
+            continue
+        if not _is_older_than(u.get("created_at"), min_age_hours):
+            continue
+        out.append(u)
+    return out
+
+
+def filter_polluted_orgs(orgs: list[dict[str, Any]], min_age_hours: int) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for o in orgs:
+        if not _is_polluted_org(o.get("name", "")):
+            continue
+        if not _is_older_than(o.get("created_at"), min_age_hours):
+            continue
+        out.append(o)
+    return out
+
+
+async def _list_paginated(
+    client: httpx.AsyncClient, path: str, *, limit: int = 500
+) -> list[dict[str, Any]]:
+    """Walk Clerk's offset-based pagination to end."""
+    results: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        r = await client.get(path, params={"limit": limit, "offset": offset})
+        r.raise_for_status()
+        body = r.json()
+        # Clerk returns a raw list for /users and /organizations (no wrapper).
+        page = body if isinstance(body, list) else body.get("data", [])
+        if not page:
+            break
+        results.extend(page)
+        if len(page) < limit:
+            break
+        offset += limit
+    return results
+
+
+async def scan(client: httpx.AsyncClient, min_age_hours: int = 0) -> PollutionReport:
+    """Query both users and orgs, narrow client-side."""
+    all_users = await _list_paginated(client, "/users")
+    all_orgs = await _list_paginated(client, "/organizations")
+    return PollutionReport(
+        users=filter_polluted_users(all_users, min_age_hours),
+        orgs=filter_polluted_orgs(all_orgs, min_age_hours),
+    )
+
+
+def _print_report(report: PollutionReport) -> None:
+    print(f"\nClerk pollution scan result (api: {CLERK_API_BASE})")
+    print(f"  Users matching pollution markers: {report.user_count}")
+    print(f"  Orgs matching pollution markers: {report.org_count}")
+    if report.users:
+        print("\n  Users:")
+        for u in report.users[:50]:
+            email = _primary_email(u)
+            print(f"    - {u.get('id', '?')}: {email}")
+        if report.user_count > 50:
+            print(f"    ... +{report.user_count - 50} more")
+    if report.orgs:
+        print("\n  Orgs:")
+        for o in report.orgs[:50]:
+            print(f"    - {o.get('id', '?')}: {o.get('name', '?')}")
+        if report.org_count > 50:
+            print(f"    ... +{report.org_count - 50} more")
+
+
+async def _purge(client: httpx.AsyncClient, report: PollutionReport) -> tuple[int, list[str]]:
+    """Delete every reported artefact. Returns (n_deleted, failures)."""
+    deleted = 0
+    failures: list[str] = []
+    for u in report.users:
+        uid = u.get("id", "")
+        if not uid:
+            continue
+        try:
+            r = await client.delete(f"/users/{uid}")
+            if r.status_code in (200, 204):
+                deleted += 1
+                print(f"  deleted user {uid} ({_primary_email(u)})")
+            elif r.status_code == 404:
+                continue
+            else:
+                failures.append(f"user {uid}: HTTP {r.status_code} {r.text[:200]}")
+        except httpx.HTTPError as e:
+            failures.append(f"user {uid}: {e}")
+    for o in report.orgs:
+        oid = o.get("id", "")
+        if not oid:
+            continue
+        try:
+            r = await client.delete(f"/organizations/{oid}")
+            if r.status_code in (200, 204):
+                deleted += 1
+                print(f"  deleted org {oid} ({o.get('name', '?')})")
+            elif r.status_code == 404:
+                continue
+            else:
+                failures.append(f"org {oid}: HTTP {r.status_code} {r.text[:200]}")
+        except httpx.HTTPError as e:
+            failures.append(f"org {oid}: {e}")
+    return deleted, failures
+
+
+async def _amain(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--execute", action="store_true",
+                        help="Actually delete (requires interactive confirmation OR --yes --confirm-count).")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Explicit dry-run (default behaviour; kept for clarity).")
+    parser.add_argument("--yes", action="store_true",
+                        help="Skip interactive stdin prompt — REQUIRES --confirm-count=N matching scan total.")
+    parser.add_argument("--confirm-count", type=int, default=None,
+                        help="Expected total (users + orgs). --yes refuses unless this matches the scan.")
+    parser.add_argument("--max-deletions", type=int, default=500,
+                        help="Safety ceiling on deletions per run (default 500). Scans above this abort.")
+    parser.add_argument("--min-age-hours", type=int, default=0,
+                        help="Skip users/orgs younger than N hours. Default 0 (purge same-session garbage).")
+    args = parser.parse_args(argv)
+
+    secret = os.environ.get("CLERK_SECRET_KEY")
+    if not secret:
+        print("error: CLERK_SECRET_KEY env var is required.", file=sys.stderr)
+        return 2
+
+    async with httpx.AsyncClient(
+        base_url=CLERK_API_BASE,
+        headers={"Authorization": f"Bearer {secret}"},
+        timeout=30.0,
+    ) as client:
+        try:
+            report = await scan(client, min_age_hours=args.min_age_hours)
+        except httpx.HTTPStatusError as e:
+            print(f"error: Clerk API call failed: {e.response.status_code} {e.response.text[:300]}",
+                  file=sys.stderr)
+            return 2
+        _print_report(report)
+
+        if not args.execute:
+            print("\n[dry-run] No deletions performed. Re-run with --execute to purge.")
+            return 0
+
+        if report.total == 0:
+            print("\nNothing to delete.")
+            return 0
+
+        total = report.total
+
+        if total > args.max_deletions:
+            print(f"\nERROR: scan would delete {total} items, above --max-deletions "
+                  f"ceiling of {args.max_deletions}. Narrow --min-age-hours or raise the ceiling.",
+                  file=sys.stderr)
+            return 2
+
+        print("\n*** DESTRUCTIVE ACTION ***")
+        print(f"About to delete: {report.user_count} users, {report.org_count} orgs.")
+        print("Full report shown above — review before confirming.")
+
+        if args.yes:
+            if args.confirm_count is None:
+                print(f"\nERROR: --yes requires --confirm-count=N matching the scan total ({total}).",
+                      file=sys.stderr)
+                return 2
+            if args.confirm_count != total:
+                print(f"\nERROR: --confirm-count={args.confirm_count} != scan total {total}. "
+                      "Re-run --dry-run, review, then pass the new count.", file=sys.stderr)
+                return 2
+            print(f"[--yes] confirm-count matches ({total}). Proceeding.")
+        else:
+            expected = f"DELETE {report.user_count} users and {report.org_count} orgs"
+            print(f"\nType '{expected}' to confirm:")
+            got = input("> ").strip()
+            if got != expected:
+                print("Confirmation did not match. Aborting.")
+                return 1
+
+        deleted, failures = await _purge(client, report)
+        print(f"\nDeleted: {deleted}")
+        if failures:
+            print(f"Failures: {len(failures)}")
+            for f in failures:
+                print(f"  - {f}")
+            return 1
+        return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return asyncio.run(_amain(argv if argv is not None else sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
