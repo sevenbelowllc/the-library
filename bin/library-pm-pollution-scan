@@ -210,8 +210,24 @@ async def _amain(argv: list[str]) -> int:
     parser.add_argument(
         "--yes",
         action="store_true",
-        help="Skip interactive confirmation when combined with --execute. "
-        "Reserved for CI environments that have already obtained sign-off.",
+        help="Skip interactive stdin prompt — requires --confirm-count=N "
+        "matching the scan's exact ticket+project count, so you cannot "
+        "accidentally purge more than you expected. Reserved for CI "
+        "environments and Claude workflows that can't hold a TTY.",
+    )
+    parser.add_argument(
+        "--confirm-count",
+        type=int,
+        default=None,
+        help="Exact expected count (tickets + projects). When combined with "
+        "--yes, the purge refuses unless the scan returns this exact count.",
+    )
+    parser.add_argument(
+        "--max-deletions",
+        type=int,
+        default=500,
+        help="Hard ceiling on deletions in a single run (default 500). "
+        "Scan above the ceiling aborts — re-scope before re-running.",
     )
     args = parser.parse_args(argv)
 
@@ -231,13 +247,44 @@ async def _amain(argv: list[str]) -> int:
         print("\nNothing to delete.")
         return 0
 
-    if not args.yes:
-        print("\n*** DESTRUCTIVE ACTION ***")
+    total = report.ticket_count + report.project_count
+
+    if total > args.max_deletions:
         print(
-            f"Type 'DELETE {report.ticket_count} tickets and "
-            f"{report.project_count} projects' to confirm:"
+            f"\nERROR: scan would delete {total} items, above --max-deletions "
+            f"ceiling of {args.max_deletions}. Narrow the filter or raise the "
+            f"ceiling explicitly.",
+            file=sys.stderr,
         )
+        return 2
+
+    print("\n*** DESTRUCTIVE ACTION ***")
+    print(f"About to delete: {report.ticket_count} tickets, {report.project_count} projects.")
+    print("Full report shown above — review before confirming.")
+
+    if args.yes:
+        # CI / non-interactive path: require --confirm-count to match exactly.
+        if args.confirm_count is None:
+            print(
+                "\nERROR: --yes requires --confirm-count=N. The count must equal "
+                f"{total} (current scan total). This prevents accidental "
+                "purges when the scan returns more tickets than expected.",
+                file=sys.stderr,
+            )
+            return 2
+        if args.confirm_count != total:
+            print(
+                f"\nERROR: --confirm-count={args.confirm_count} does not match "
+                f"current scan total {total}. Re-run --dry-run, review, then "
+                f"pass --confirm-count={total}.",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"[--yes] confirm-count matches ({total}). Proceeding.")
+    else:
+        # Interactive path: require typed phrase.
         expected = f"DELETE {report.ticket_count} tickets and {report.project_count} projects"
+        print(f"\nType '{expected}' to confirm:")
         got = input("> ").strip()
         if got != expected:
             print("Confirmation did not match. Aborting.")
