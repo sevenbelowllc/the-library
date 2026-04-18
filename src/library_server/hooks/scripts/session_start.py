@@ -25,11 +25,108 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from library_server.config import load_config, resolve_standards
 from library_server.state.project_state import parse_project_state
 from library_server.state.session_state import parse_session_state
 
 # Character budget: ~4000 chars / ~800 tokens
 _BUDGET = 4000
+
+
+def _extract_summary(md_text: str) -> str:
+    """Pull a one-line summary from a standards file.
+
+    Precedence:
+      1. YAML frontmatter ``description:`` value.
+      2. First non-empty, non-heading line after the first H1.
+      3. Empty string if neither is found.
+    """
+    lines = md_text.splitlines()
+
+    # Frontmatter description
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                break
+            stripped = lines[i].strip()
+            if stripped.lower().startswith("description:"):
+                val = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                if val:
+                    return val
+
+    # First line after the first H1
+    seen_h1 = False
+    for line in lines:
+        if not seen_h1:
+            if line.lstrip().startswith("# "):
+                seen_h1 = True
+            continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        # Strip markdown bold markers like **Status:** X
+        return stripped
+    return ""
+
+
+def build_standards_reminder(project_dir: Path, repo_name: str) -> str:
+    """Read library-config.yaml#standards and render a <system-reminder> block.
+
+    Returns "" if there is no config, no standards block, or every registered
+    path is missing. Missing paths are warned to stderr; the hook does not
+    crash on a missing file (a common occurrence during partial syncs).
+    """
+    config_path = project_dir / "library-config.yaml"
+    if not config_path.is_file():
+        return ""
+
+    try:
+        config = load_config(config_path)
+        standards = resolve_standards(config, repo_name=repo_name)
+    except Exception as e:  # malformed config
+        sys.stderr.write(
+            f"[library:session_start] Failed to resolve standards: {e}\n"
+        )
+        return ""
+
+    if not standards:
+        return ""
+
+    rendered: list[str] = []
+    for s in standards:
+        abs_path: Path = s["absolute_path"]
+        if not abs_path.is_file():
+            sys.stderr.write(
+                f"[library:session_start] Standard '{s['name']}' path is missing: "
+                f"{abs_path} — skipping.\n"
+            )
+            continue
+        try:
+            text = abs_path.read_text(encoding="utf-8")
+        except OSError as e:
+            sys.stderr.write(
+                f"[library:session_start] Failed to read {abs_path}: {e} — skipping.\n"
+            )
+            continue
+        summary = _extract_summary(text)
+        if summary:
+            rendered.append(f"- {s['name']} — {summary}\n  {abs_path}")
+        else:
+            rendered.append(f"- {s['name']}\n  {abs_path}")
+
+    if not rendered:
+        return ""
+
+    body = "\n".join(rendered)
+    return (
+        "<system-reminder>\n"
+        "Project standards registered in library-config.yaml#standards. "
+        "Consult the relevant file before acting in that domain.\n\n"
+        f"{body}\n"
+        "</system-reminder>"
+    )
 
 
 def _read_project_state(reading_room: Path) -> str:
@@ -155,8 +252,16 @@ def main() -> None:
     mode = data.get("mode", "startup")
     reading_room = Path(data["reading_room"]) if "reading_room" in data else Path(".")
     sessions_dir = Path(data["sessions_dir"]) if "sessions_dir" in data else Path(".")
+    project_dir = Path(data["project_dir"]) if "project_dir" in data else (
+        Path(data["cwd"]) if "cwd" in data else Path.cwd()
+    )
+    repo_name = data.get("repo_name") or project_dir.name
 
     context = build_session_context(mode, reading_room, sessions_dir)
+
+    standards_reminder = build_standards_reminder(project_dir=project_dir, repo_name=repo_name)
+    if standards_reminder:
+        context = f"{context}\n\n{standards_reminder}" if context else standards_reminder
 
     output = {
         "hookSpecificOutput": {

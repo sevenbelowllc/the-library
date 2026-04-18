@@ -67,6 +67,16 @@ def main() -> None:
         action="store_true",
         help="Overwrite existing config and state files",
     )
+    init_parser.add_argument(
+        "--interactive-standards",
+        action="store_true",
+        help="Prompt interactively to register project standards in library-config.yaml",
+    )
+    init_parser.add_argument(
+        "--no-standards-block",
+        action="store_true",
+        help="Skip writing the Project Standards block into CLAUDE.md",
+    )
 
     # --- validate ---
     sub.add_parser("validate", help="Validate current Library installation")
@@ -111,10 +121,16 @@ def _cmd_init(args: argparse.Namespace) -> None:
         vault = args.vault or "./vault"
         pm_provider = args.pm or "none"
 
+        standards: list[dict] = []
+        if getattr(args, "interactive_standards", False):
+            rr_candidate = (project_dir / reading_room).resolve()
+            standards = _prompt_standards(rr_candidate)
+
         config_content = _generate_config(
             reading_room=reading_room,
             vault=vault,
             pm_provider=pm_provider,
+            standards=standards,
         )
         config_path.write_text(config_content, encoding="utf-8")
         print(f"  [done] Created {CONFIG_FILENAME}")
@@ -213,6 +229,26 @@ def _cmd_init(args: argparse.Namespace) -> None:
         print(f"  [done] Created {scripts_created} hook wrapper script(s)")
     else:
         print(f"  [skip] Hook wrapper scripts already exist")
+    steps_ok += 1
+
+    # Step 9b: Inject Project Standards block into CLAUDE.md (LIBRARY-3)
+    steps_total += 1
+    if getattr(args, "no_standards_block", False):
+        print("  [skip] Project Standards block skipped (--no-standards-block)")
+    else:
+        claude_md = project_dir / "CLAUDE.md"
+        try:
+            status, msg = _inject_standards_block(claude_md)
+            if status == "skipped":
+                print(f"  [skip] {msg}")
+            elif status == "inserted":
+                print(f"  [done] Injected Project Standards block into CLAUDE.md")
+            elif status == "unchanged":
+                print(f"  [skip] Project Standards block already current")
+            elif status == "user_edited":
+                print(f"  [warn] {msg}")
+        except ValueError as e:
+            print(f"  [warn] {e}")
     steps_ok += 1
 
     # Step 10: Initialize routing journal
@@ -390,7 +426,12 @@ def _cmd_doctor() -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _generate_config(reading_room: str, vault: str, pm_provider: str) -> str:
+def _generate_config(
+    reading_room: str,
+    vault: str,
+    pm_provider: str,
+    standards: list[dict] | None = None,
+) -> str:
     """Generate a starter library-config.yaml."""
     lines = [
         f'library:',
@@ -417,6 +458,15 @@ def _generate_config(reading_room: str, vault: str, pm_provider: str) -> str:
         lines += [
             f'  teams: []  # e.g. [TEAM1]',
         ]
+    if standards:
+        lines += ['', '# Project standards — surfaced into context by the SessionStart hook.',
+                  '# Paths are relative to reading_room.path.',
+                  'standards:']
+        for s in standards:
+            lines.append(f'  - name: {s["name"]}')
+            lines.append(f'    path: {s["path"]}')
+            applies = ", ".join(f'"{a}"' for a in s["applies_to"])
+            lines.append(f'    applies_to: [{applies}]')
     lines += [
         f'',
         f'graphify:',
@@ -694,6 +744,143 @@ sys.exit(result.returncode)
         created += 1
 
     return created
+
+
+# ---------------------------------------------------------------------------
+# Standards prompt (LIBRARY-1)
+# ---------------------------------------------------------------------------
+
+
+def _prompt_standards(
+    reading_room: Path,
+    input_fn=input,
+    output_fn=print,
+) -> list[dict]:
+    """Interactively prompt to register project standards.
+
+    Returns a list of {name, path, applies_to} dicts suitable to write into
+    library-config.yaml#standards. Auto-detects files under
+    <reading_room>/standards/*.md and suggests each as a pre-filled entry.
+
+    Parameters are injected so tests can drive the prompt deterministically.
+    """
+    if not reading_room.exists():
+        return []
+
+    ans = input_fn("Do you have project standards to register? (y/n) ").strip().lower()
+    if ans not in ("y", "yes"):
+        return []
+
+    standards_dir = reading_room / "standards"
+    detected: list[Path] = []
+    if standards_dir.is_dir():
+        detected = sorted(p for p in standards_dir.glob("*.md") if p.is_file())
+
+    registered: list[dict] = []
+
+    for md in detected:
+        default_name = md.stem
+        rel_path = md.relative_to(reading_room).as_posix()
+        output_fn(f"\nStandard found: {rel_path}")
+        name = input_fn(f"  name [{default_name}]: ").strip() or default_name
+        path = input_fn(f"  path [{rel_path}]: ").strip() or rel_path
+        applies_raw = input_fn(
+            "  applies_to (comma-separated repo names, '*' for all, "
+            "'skip' to skip) [*]: "
+        ).strip()
+        if applies_raw == "skip":
+            continue
+        if not applies_raw:
+            applies_to = ["*"]
+        else:
+            applies_to = [x.strip() for x in applies_raw.split(",") if x.strip()] or ["*"]
+        registered.append({"name": name, "path": path, "applies_to": applies_to})
+
+    # Optional: allow user to add a standard that wasn't auto-detected
+    while True:
+        more = input_fn("\nRegister another standard not listed above? (y/n) ").strip().lower()
+        if more not in ("y", "yes"):
+            break
+        name = input_fn("  name: ").strip()
+        path = input_fn("  path (relative to reading_room): ").strip()
+        applies_raw = input_fn("  applies_to [*]: ").strip() or "*"
+        applies_to = [x.strip() for x in applies_raw.split(",") if x.strip()] or ["*"]
+        if name and path:
+            registered.append({"name": name, "path": path, "applies_to": applies_to})
+
+    return registered
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE.md Project Standards block (LIBRARY-3)
+# ---------------------------------------------------------------------------
+
+_STANDARDS_BLOCK_START = "<!-- library:standards-block:start -->"
+_STANDARDS_BLOCK_END = "<!-- library:standards-block:end -->"
+_STANDARDS_BLOCK_BODY = (
+    "## Project Standards\n"
+    "Canonical standards are indexed in `library-config.yaml#standards`. "
+    "Consult the relevant file before acting in that domain.\n"
+)
+
+
+def _canonical_standards_block() -> str:
+    """Return the canonical block content, newline-delimited including markers."""
+    return (
+        f"{_STANDARDS_BLOCK_START}\n"
+        f"{_STANDARDS_BLOCK_BODY}"
+        f"{_STANDARDS_BLOCK_END}\n"
+    )
+
+
+def _inject_standards_block(claude_md: Path) -> tuple[str, str]:
+    """Idempotently inject or update the Project Standards block in CLAUDE.md.
+
+    Return value: (status, message) where status is one of:
+      - "skipped":     CLAUDE.md does not exist — do not create it.
+      - "inserted":    No prior block — block appended.
+      - "unchanged":   Block present with canonical content — no write.
+      - "user_edited": Block present but modified — preserved, warning returned.
+
+    Raises:
+        ValueError: if the file contains only one of the marker lines — the
+        file is corrupt and the caller must intervene. Silent overwrite would
+        violate the no-silent-skip rule.
+    """
+    if not claude_md.is_file():
+        return ("skipped", f"{claude_md} does not exist; not creating it.")
+
+    text = claude_md.read_text(encoding="utf-8")
+    has_start = _STANDARDS_BLOCK_START in text
+    has_end = _STANDARDS_BLOCK_END in text
+
+    if has_start != has_end:
+        raise ValueError(
+            f"{claude_md} contains an unpaired standards-block marker. "
+            f"Fix manually; refusing to silently overwrite."
+        )
+
+    canonical = _canonical_standards_block()
+
+    if not has_start:
+        suffix = "" if text.endswith("\n") else "\n"
+        new_text = f"{text}{suffix}\n{canonical}"
+        claude_md.write_text(new_text, encoding="utf-8")
+        return ("inserted", "Project Standards block added.")
+
+    # Extract existing block
+    start = text.index(_STANDARDS_BLOCK_START)
+    end = text.index(_STANDARDS_BLOCK_END) + len(_STANDARDS_BLOCK_END)
+    existing = text[start:end]
+    # Compare to canonical (strip trailing newline from canonical for comparison)
+    canonical_stripped = canonical.rstrip("\n")
+    if existing == canonical_stripped:
+        return ("unchanged", "Project Standards block already up-to-date.")
+    return (
+        "user_edited",
+        f"Project Standards block in {claude_md} has been edited by the user. "
+        f"Leaving it alone.",
+    )
 
 
 def _relpath_or_abs(target: Path, base: Path) -> str:
