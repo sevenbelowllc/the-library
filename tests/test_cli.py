@@ -19,7 +19,9 @@ from library_server.cli import (
     _ensure_runtime_dirs,
     _ensure_vault,
     _generate_config,
+    _inject_standards_block,
     _install_hooks,
+    _prompt_standards,
     _relpath_or_abs,
     main,
 )
@@ -180,6 +182,8 @@ class TestCmdInit:
             "pm": "none",
             "skip_hooks": True,  # skip hooks in tests — no .claude dir needed
             "force": False,
+            "interactive_standards": False,
+            "no_standards_block": False,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
@@ -195,7 +199,11 @@ class TestCmdInit:
             _cmd_init(args)
 
         captured = capsys.readouterr()
-        assert "11/11 steps" in captured.out
+        assert "12/12 steps" in captured.out
+        # LIBRARY-3: the Project Standards block is injected into CLAUDE.md
+        claude_text = (project / "CLAUDE.md").read_text()
+        assert "<!-- library:standards-block:start -->" in claude_text
+        assert "<!-- library:standards-block:end -->" in claude_text
 
         # Verify files created
         assert (project / "library-config.yaml").is_file()
@@ -530,6 +538,8 @@ class TestCmdInitSkipPaths:
             "pm": "none",
             "skip_hooks": True,
             "force": False,
+            "interactive_standards": False,
+            "no_standards_block": False,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
@@ -754,3 +764,125 @@ class TestCmdValidateAdditional:
 
         captured = capsys.readouterr()
         assert "malformed" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# _prompt_standards (LIBRARY-1)
+# ---------------------------------------------------------------------------
+
+
+class TestPromptStandards:
+    def _make_reading_room(self, tmp_path: Path) -> Path:
+        rr = tmp_path / "reading-room"
+        (rr / "standards").mkdir(parents=True)
+        (rr / "standards" / "TESTING-STANDARD.md").write_text("# Testing\n")
+        (rr / "standards" / "JIRA-WORKFLOW.md").write_text("# Jira\n")
+        return rr
+
+    def test_prompt_decline_returns_empty_list(self, tmp_path: Path):
+        rr = self._make_reading_room(tmp_path)
+        answers = iter(["n"])
+        out: list[str] = []
+        result = _prompt_standards(rr, input_fn=lambda _: next(answers), output_fn=out.append)
+        assert result == []
+
+    def test_prompt_accepts_autodetected_defaults(self, tmp_path: Path):
+        rr = self._make_reading_room(tmp_path)
+        # y to register; then for each of 2 detected standards: name, path, applies_to
+        # (6 prompts) + one "n" to the "register another?" loop = 8 answers total.
+        answers = iter(["y", "", "", "", "", "", "", "n"])
+        out: list[str] = []
+        result = _prompt_standards(rr, input_fn=lambda _: next(answers), output_fn=out.append)
+        names = {s["name"] for s in result}
+        assert "TESTING-STANDARD" in names
+        assert "JIRA-WORKFLOW" in names
+        for s in result:
+            assert s["applies_to"] == ["*"]
+            assert s["path"].startswith("standards/")
+
+    def test_prompt_custom_applies_to(self, tmp_path: Path):
+        rr = self._make_reading_room(tmp_path)
+        # Detected files sort alphabetically: JIRA-WORKFLOW first, TESTING-STANDARD second.
+        # y; JIRA name ""; JIRA path ""; JIRA applies "skip";
+        #    TESTING name ""; TESTING path ""; TESTING applies "repo-a,repo-b";
+        #    "n" to register-another loop.
+        answers = iter(["y", "", "", "skip", "", "", "repo-a,repo-b", "n"])
+        out: list[str] = []
+        result = _prompt_standards(rr, input_fn=lambda _: next(answers), output_fn=out.append)
+        testing = [s for s in result if s["name"] == "TESTING-STANDARD"]
+        assert len(testing) == 1
+        assert testing[0]["applies_to"] == ["repo-a", "repo-b"]
+        assert not any(s["name"] == "JIRA-WORKFLOW" for s in result)
+
+    def test_prompt_missing_reading_room_returns_empty(self, tmp_path: Path):
+        """If reading_room does not exist, prompt returns [] (negative path)."""
+        out: list[str] = []
+        result = _prompt_standards(
+            tmp_path / "does-not-exist",
+            input_fn=lambda _: (_ for _ in ()).throw(AssertionError("should not prompt")),
+            output_fn=out.append,
+        )
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# _inject_standards_block (LIBRARY-3)
+# ---------------------------------------------------------------------------
+
+
+_BLOCK_START = "<!-- library:standards-block:start -->"
+_BLOCK_END = "<!-- library:standards-block:end -->"
+
+
+class TestInjectStandardsBlock:
+    def test_no_claude_md_skips_gracefully(self, tmp_path: Path):
+        """When CLAUDE.md does not exist, return ('skipped', ...) without creating it."""
+        claude = tmp_path / "CLAUDE.md"
+        status, _ = _inject_standards_block(claude)
+        assert status == "skipped"
+        assert not claude.exists()
+
+    def test_claude_md_without_block_gets_block_appended(self, tmp_path: Path):
+        claude = tmp_path / "CLAUDE.md"
+        claude.write_text("# Project\n\nExisting content.\n")
+        status, _ = _inject_standards_block(claude)
+        assert status == "inserted"
+        text = claude.read_text()
+        assert "# Project" in text
+        assert "Existing content." in text
+        assert _BLOCK_START in text
+        assert _BLOCK_END in text
+        assert "## Project Standards" in text
+        assert "library-config.yaml#standards" in text
+
+    def test_unchanged_block_is_idempotent(self, tmp_path: Path):
+        claude = tmp_path / "CLAUDE.md"
+        claude.write_text("# Project\n")
+        _inject_standards_block(claude)
+        first = claude.read_text()
+        status, _ = _inject_standards_block(claude)
+        assert status == "unchanged"
+        assert claude.read_text() == first
+
+    def test_user_edited_block_is_preserved_with_warning(self, tmp_path: Path):
+        claude = tmp_path / "CLAUDE.md"
+        claude.write_text("# Project\n")
+        _inject_standards_block(claude)
+        # User edits the block content
+        text = claude.read_text()
+        edited = text.replace(
+            "## Project Standards",
+            "## Project Standards\n\nUser hand-note: do the thing.",
+        )
+        claude.write_text(edited)
+        status, msg = _inject_standards_block(claude)
+        assert status == "user_edited"
+        assert "User hand-note" in claude.read_text()
+        assert msg  # warning string
+
+    def test_malformed_block_only_start_marker_raises(self, tmp_path: Path):
+        """Half a block is a corrupt file — raise rather than silently overwrite."""
+        claude = tmp_path / "CLAUDE.md"
+        claude.write_text(f"# Project\n\n{_BLOCK_START}\nincomplete\n")
+        with pytest.raises(ValueError, match="marker"):
+            _inject_standards_block(claude)
