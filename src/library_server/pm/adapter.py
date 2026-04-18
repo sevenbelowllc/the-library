@@ -6,11 +6,46 @@ from abc import ABC, abstractmethod
 
 from library_server.types import (
     EpicResult,
+    IssueDetail,
     ProjectResult,
     ProjectState,
     TaskResult,
     Transition,
 )
+
+
+class TransitionNotAvailableError(Exception):
+    """Raised when a requested status transition is not reachable from the current state.
+
+    Surfaced when update_task is called with a ``status`` that does not match any
+    available transition for the issue. Previously these were silent no-ops — a
+    bug that caused the 2026-04-17 audit failure where ``status="Done"`` was
+    accepted but ignored.
+
+    Attributes:
+        task_id: The issue key that could not be transitioned.
+        requested_status: The status name the caller asked for.
+        current_status: The issue's current status name (may be empty if unknown).
+        available_transitions: Human-readable names of transitions that ARE available
+            (format: ``"<transition.name> -> <to.name>"``).
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        requested_status: str,
+        current_status: str,
+        available_transitions: list[str],
+    ) -> None:
+        self.task_id = task_id
+        self.requested_status = requested_status
+        self.current_status = current_status
+        self.available_transitions = available_transitions
+        avail = ", ".join(available_transitions) if available_transitions else "(none)"
+        super().__init__(
+            f"Cannot transition {task_id} from '{current_status}' to "
+            f"'{requested_status}'. Available transitions: {avail}"
+        )
 
 
 class PMAdapter(ABC):
@@ -113,4 +148,9 @@ class PMAdapter(ABC):
 
     @abstractmethod
     async def get_link_types(self) -> list[dict]:
+        ...
+
+    @abstractmethod
+    async def get_issue(self, task_id: str) -> IssueDetail:
+        """Return full detail for an issue — fields, comments, available transitions."""
         ...

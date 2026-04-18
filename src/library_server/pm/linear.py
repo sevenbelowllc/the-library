@@ -12,6 +12,7 @@ except ImportError:
 from library_server.pm.adapter import PMAdapter
 from library_server.types import (
     EpicResult,
+    IssueDetail,
     ProjectResult,
     ProjectState,
     TaskResult,
@@ -246,4 +247,7 @@ class LinearAdapter(PMAdapter):
         raise NotImplementedError("Not supported by Linear adapter")
 
     async def get_link_types(self) -> list[dict]:
+        raise NotImplementedError("Not supported by Linear adapter")
+
+    async def get_issue(self, task_id: str) -> IssueDetail:
         raise NotImplementedError("Not supported by Linear adapter")

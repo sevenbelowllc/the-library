@@ -100,15 +100,21 @@ class TestJiraAdapter:
 
     @pytest.mark.asyncio
     async def test_update_task_with_transition(self, monkeypatch):
-        """update_task should find and execute the right transition."""
+        """update_task should match on target status name (to.name), not transition name.
+
+        Real Jira workflows often name every transition "Any" (or similar) and distinguish
+        them only by their ``to`` status. The adapter must match the requested status
+        against ``transition.to.name`` and call transition_issue with the matched id.
+        """
         monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
             "transitions": [
-                {"id": "11", "name": "To Do"},
-                {"id": "21", "name": "In Progress"},
-                {"id": "31", "name": "Done"},
+                {"id": "2", "name": "Any", "to": {"name": "In Progress"}},
+                {"id": "3", "name": "Any", "to": {"name": "To Do"}},
+                {"id": "4", "name": "Any", "to": {"name": "In Review"}},
+                {"id": "5", "name": "Any", "to": {"name": "Done"}},
             ],
         })
         adapter.client.transition_issue = AsyncMock(return_value=None)
@@ -118,17 +124,47 @@ class TestJiraAdapter:
         })
 
         result = await adapter.update_task("PROJ-1", status="Done")
-        adapter.client.transition_issue.assert_called_once_with("PROJ-1", "31")
+        adapter.client.transition_issue.assert_called_once_with("PROJ-1", "5")
         assert result.status == TaskStatus.DONE
 
     @pytest.mark.asyncio
-    async def test_update_task_transition_not_found(self, monkeypatch):
-        """update_task should still return result when transition name doesn't match."""
+    async def test_update_task_matches_named_transition(self, monkeypatch):
+        """update_task should also match when requested status equals transition.name
+        (covers Jira workflows where transitions have semantic names)."""
         monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
-            "transitions": [{"id": "11", "name": "To Do"}],
+            "transitions": [
+                {"id": "11", "name": "To Do", "to": {"name": "To Do"}},
+                {"id": "21", "name": "Start Progress", "to": {"name": "In Progress"}},
+            ],
+        })
+        adapter.client.transition_issue = AsyncMock(return_value=None)
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "In Progress"}, "labels": []},
+        })
+
+        result = await adapter.update_task("PROJ-1", status="Start Progress")
+        adapter.client.transition_issue.assert_called_once_with("PROJ-1", "21")
+        assert result.status == TaskStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_update_task_transition_not_found_raises(self, monkeypatch):
+        """update_task MUST raise TransitionNotAvailableError when no transition matches,
+        listing the available transitions and current status. Silent no-op is a bug
+        (see 2026-04-17 audit failure)."""
+        from library_server.pm.adapter import TransitionNotAvailableError
+
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_transitions = AsyncMock(return_value={
+            "transitions": [
+                {"id": "11", "name": "Any", "to": {"name": "To Do"}},
+                {"id": "21", "name": "Any", "to": {"name": "In Progress"}},
+            ],
         })
         adapter.client.transition_issue = AsyncMock()
         adapter.client.get_issue = AsyncMock(return_value={
@@ -136,7 +172,34 @@ class TestJiraAdapter:
             "fields": {"summary": "Task", "status": {"name": "To Do"}, "labels": []},
         })
 
-        result = await adapter.update_task("PROJ-1", status="Nonexistent")
+        with pytest.raises(TransitionNotAvailableError) as exc_info:
+            await adapter.update_task("PROJ-1", status="Nonexistent")
+
+        err = exc_info.value
+        assert err.task_id == "PROJ-1"
+        assert err.requested_status == "Nonexistent"
+        # Available transitions should list both transition.name and to.name options
+        assert any("To Do" in t for t in err.available_transitions)
+        assert any("In Progress" in t for t in err.available_transitions)
+        # Message must mention the available options for debuggability
+        assert "To Do" in str(err) or "In Progress" in str(err)
+        adapter.client.transition_issue.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_task_no_status_does_not_raise(self, monkeypatch):
+        """update_task with no status must not call get_transitions or raise."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_transitions = AsyncMock()
+        adapter.client.transition_issue = AsyncMock()
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "PROJ-1",
+            "fields": {"summary": "Task", "status": {"name": "To Do"}, "labels": []},
+        })
+
+        result = await adapter.update_task("PROJ-1")
+        adapter.client.get_transitions.assert_not_called()
         adapter.client.transition_issue.assert_not_called()
         assert result.task_id == "PROJ-1"
 
@@ -301,6 +364,104 @@ class TestJiraAdapter:
 
         await adapter.link_issues("Blocks", "PROJ-1", "PROJ-2")
         adapter.client.create_issue_link.assert_called_once_with("Blocks", "PROJ-1", "PROJ-2")
+
+    @pytest.mark.asyncio
+    async def test_get_issue_parses_all_fields(self, monkeypatch):
+        """get_issue returns an IssueDetail with all fields populated and most-recent
+        20 comments, rendering ADF description to plain text."""
+        from library_server.types import IssueDetail
+
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+
+        # Fabricate 25 comments to verify trimming to 20.
+        comments_payload = [
+            {
+                "author": {"displayName": f"User {i}"},
+                "created": f"2026-04-17T00:00:{i:02d}.000Z",
+                "body": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {"type": "paragraph", "content": [{"type": "text", "text": f"c{i}"}]},
+                    ],
+                },
+            }
+            for i in range(25)
+        ]
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "LIBRARY-99",
+            "self": "https://test.atlassian.net/rest/api/3/issue/LIBRARY-99",
+            "fields": {
+                "summary": "A thing",
+                "status": {"name": "In Progress"},
+                "labels": ["infra", "bug"],
+                "assignee": {"displayName": "Alice", "accountId": "a1"},
+                "parent": {"key": "LIBRARY-1"},
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {"type": "paragraph", "content": [{"type": "text", "text": "Hello"}]},
+                        {"type": "paragraph", "content": [{"type": "text", "text": "World"}]},
+                    ],
+                },
+                "comment": {"comments": comments_payload, "total": 25},
+            },
+        })
+        adapter.client.get_transitions = AsyncMock(return_value={
+            "transitions": [
+                {"id": "2", "name": "Any", "to": {"name": "In Progress"}},
+                {"id": "5", "name": "Any", "to": {"name": "Done"}},
+            ],
+        })
+
+        detail = await adapter.get_issue("LIBRARY-99")
+        assert isinstance(detail, IssueDetail)
+        assert detail.id == "LIBRARY-99"
+        assert detail.summary == "A thing"
+        assert detail.status == "In Progress"
+        assert detail.labels == ["infra", "bug"]
+        assert detail.parent == "LIBRARY-1"
+        assert detail.assignee == "Alice"
+        assert detail.description == "Hello\nWorld"
+        # Most-recent 20, chronological order preserved (c5..c24)
+        assert len(detail.comments) == 20
+        assert detail.comments[0].body == "c5"
+        assert detail.comments[-1].body == "c24"
+        assert detail.comments[-1].author == "User 24"
+        assert [t.to_status for t in detail.available_transitions] == [
+            "In Progress",
+            "Done",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_get_issue_handles_missing_fields(self, monkeypatch):
+        """get_issue tolerates missing assignee/parent/description/comments."""
+        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+
+        adapter.client.get_issue = AsyncMock(return_value={
+            "key": "LIBRARY-1",
+            "self": "",
+            "fields": {
+                "summary": "minimal",
+                "status": {"name": "To Do"},
+                "labels": [],
+                "assignee": None,
+                "description": None,
+            },
+        })
+        adapter.client.get_transitions = AsyncMock(return_value={"transitions": []})
+
+        detail = await adapter.get_issue("LIBRARY-1")
+        assert detail.assignee is None
+        assert detail.parent is None
+        assert detail.description == ""
+        assert detail.comments == []
+        assert detail.available_transitions == []
 
     @pytest.mark.asyncio
     async def test_get_link_types(self, monkeypatch):
