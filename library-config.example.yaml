@@ -32,11 +32,27 @@ vault:
     excluded_folders:                   # folders excluded from Obsidian search
       - "sources/raw"                   # raw source material — noisy in search
 
+# Project standards — canonical docs surfaced into every session by the
+# SessionStart hook. Paths are relative to reading_room.path. applies_to is
+# a list of repo names or ["*"] for all repos.
+# standards:
+#   - name: "Testing Standard"
+#     path: "standards/TESTING-STANDARD.md"
+#     applies_to: ["*"]
+#   - name: "Jira Workflow"
+#     path: "standards/JIRA-WORKFLOW.md"
+#     applies_to: ["*"]
+
 # Project management integration
 pm:
   provider: "none"                      # jira | linear | none
   # site_url: "https://yoursite.atlassian.net"  # Jira only
   # workflow_scheme: "SevenBelow Standard SDLC Workflow" # Default workflow to assign for Jira Projects
+  # workflow:                             # Generalised ordered workflow (replaces per-provider special-cases)
+  #   states: ["To Do", "In Progress", "In Review", "Closed"]
+  #   in_progress: "In Progress"
+  #   in_review: "In Review"
+  #   closed: "Closed"
   projects: []                          # list of {key, name} objects
   # Example:
   # projects:

@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from library_server.config import load_config, resolve_checkpoint_dir, validate_config, LibraryConfig
+from library_server.config import (
+    autodetect_jira_workflow,
+    load_config,
+    resolve_checkpoint_dir,
+    resolve_standards,
+    validate_config,
+    LibraryConfig,
+)
 
 
 def test_load_config_from_file(tmp_path: Path):
@@ -147,3 +154,171 @@ def test_resolve_checkpoint_dir_requires_reading_room(tmp_path: Path):
 
     with pytest.raises(ValueError, match="reading_room.path"):
         resolve_checkpoint_dir(config)
+
+
+# --- standards block (LIBRARY-1) ---
+
+
+def test_standards_block_absent_returns_empty_list(tmp_path: Path):
+    """A config without standards: yields an empty list."""
+    rr = tmp_path / "reading-room"
+    rr.mkdir()
+    cfg_path = _write_yaml(tmp_path, {"reading_room": {"path": "./reading-room"}})
+    config = load_config(cfg_path)
+    assert resolve_standards(config, repo_name="any") == []
+
+
+def test_standards_block_resolves_paths_relative_to_reading_room(tmp_path: Path):
+    """resolve_standards returns absolute paths rooted at reading_room.path."""
+    rr = tmp_path / "reading-room"
+    (rr / "standards").mkdir(parents=True)
+    (rr / "standards" / "TESTING-STANDARD.md").write_text("# Testing\n")
+    cfg_path = _write_yaml(
+        tmp_path,
+        {
+            "reading_room": {"path": "./reading-room"},
+            "standards": [
+                {
+                    "name": "Testing Standard",
+                    "path": "standards/TESTING-STANDARD.md",
+                    "applies_to": ["*"],
+                }
+            ],
+        },
+    )
+    config = load_config(cfg_path)
+    resolved = resolve_standards(config, repo_name="compliance-core")
+    assert len(resolved) == 1
+    assert resolved[0]["name"] == "Testing Standard"
+    assert resolved[0]["absolute_path"] == (rr / "standards" / "TESTING-STANDARD.md").resolve()
+
+
+def test_standards_applies_to_filters_by_repo(tmp_path: Path):
+    """A standard with applies_to=[repo-a] is hidden from repo-b."""
+    rr = tmp_path / "reading-room"
+    (rr / "standards").mkdir(parents=True)
+    (rr / "standards" / "A.md").write_text("# A\n")
+    (rr / "standards" / "B.md").write_text("# B\n")
+    cfg_path = _write_yaml(
+        tmp_path,
+        {
+            "reading_room": {"path": "./reading-room"},
+            "standards": [
+                {"name": "A", "path": "standards/A.md", "applies_to": ["repo-a"]},
+                {"name": "B", "path": "standards/B.md", "applies_to": ["*"]},
+            ],
+        },
+    )
+    config = load_config(cfg_path)
+    names_b = [s["name"] for s in resolve_standards(config, repo_name="repo-b")]
+    assert names_b == ["B"]
+    names_a = [s["name"] for s in resolve_standards(config, repo_name="repo-a")]
+    assert names_a == ["A", "B"]
+
+
+def test_standards_malformed_entry_raises(tmp_path: Path):
+    """A standards entry missing required keys is rejected loudly — no silent skip."""
+    rr = tmp_path / "reading-room"
+    rr.mkdir()
+    cfg_path = _write_yaml(
+        tmp_path,
+        {
+            "reading_room": {"path": "./reading-room"},
+            "standards": [{"name": "broken"}],  # missing path + applies_to
+        },
+    )
+    config = load_config(cfg_path)
+    with pytest.raises(ValueError, match="standards\\[0\\]"):
+        resolve_standards(config, repo_name="any")
+
+
+def test_standards_requires_reading_room(tmp_path: Path):
+    """standards block requires reading_room.path to resolve against."""
+    cfg_path = _write_yaml(
+        tmp_path,
+        {"standards": [{"name": "x", "path": "a.md", "applies_to": ["*"]}]},
+    )
+    config = load_config(cfg_path)
+    with pytest.raises(ValueError, match="reading_room.path"):
+        resolve_standards(config, repo_name="any")
+
+
+# --- pm.workflow block (LIBRARY-1) ---
+
+
+def test_validate_pm_workflow_states_valid(tmp_path: Path):
+    """pm.workflow with an ordered states list and named keys passes."""
+    cfg_path = _write_yaml(
+        tmp_path,
+        {
+            "library": {"version": "1.0"},
+            "pm": {
+                "provider": "jira",
+                "workflow": {
+                    "states": ["To Do", "In Progress", "In Review", "Closed"],
+                    "in_progress": "In Progress",
+                    "in_review": "In Review",
+                    "closed": "Closed",
+                },
+            },
+        },
+    )
+    config = load_config(cfg_path)
+    result = validate_config(config)
+    assert not any("pm.workflow" in w for w in result["warnings"])
+
+
+def test_autodetect_jira_workflow_happy():
+    """Given a Jira project statuses response, derive ordered states + named keys."""
+    response = [
+        {
+            "name": "Task",
+            "statuses": [
+                {"name": "To Do"},
+                {"name": "In Progress"},
+                {"name": "In Review"},
+                {"name": "Done"},
+            ],
+        },
+        {
+            "name": "Bug",
+            "statuses": [
+                {"name": "To Do"},
+                {"name": "In Progress"},
+                {"name": "Done"},
+            ],
+        },
+    ]
+    wf = autodetect_jira_workflow(response)
+    assert wf["states"] == ["To Do", "In Progress", "In Review", "Done"]
+    assert wf["in_progress"] == "In Progress"
+    assert wf["in_review"] == "In Review"
+    assert wf["closed"] == "Done"
+
+
+def test_autodetect_jira_workflow_empty_raises():
+    """Empty Jira response must raise — not silently return a partial config."""
+    with pytest.raises(ValueError, match="No statuses"):
+        autodetect_jira_workflow([])
+
+
+def test_validate_pm_workflow_named_key_not_in_states(tmp_path: Path):
+    """If pm.workflow.in_progress is not present in states, warn."""
+    cfg_path = _write_yaml(
+        tmp_path,
+        {
+            "library": {"version": "1.0"},
+            "pm": {
+                "provider": "jira",
+                "workflow": {
+                    "states": ["To Do", "Doing", "Done"],
+                    "in_progress": "In Progress",  # not in states
+                    "in_review": "Doing",
+                    "closed": "Done",
+                },
+            },
+        },
+    )
+    config = load_config(cfg_path)
+    result = validate_config(config)
+    assert any("pm.workflow.in_progress" in w for w in result["warnings"])
