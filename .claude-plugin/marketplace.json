@@ -4,7 +4,7 @@
   "description": "The Library — open-source meta-system for AI-assisted project management",
   "owner": {
     "name": "SevenBelow LLC",
-    "email": "dev@sevenbelow.io"
+    "email": "dev@sevenbelow.com"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "category": "productivity",
       "author": {
         "name": "SevenBelow LLC",
-        "email": "dev@sevenbelow.io"
+        "email": "dev@sevenbelow.com"
       },
       "tags": ["mcp", "knowledge-management", "project-management", "obsidian", "graphify", "jira"],
       "version": "0.3.0"
