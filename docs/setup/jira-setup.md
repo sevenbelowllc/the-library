@@ -32,7 +32,7 @@ The Library reads Jira credentials from two environment variables:
 
 | Variable | Value |
 |----------|-------|
-| `JIRA_EMAIL` | The email address of the Atlassian account that owns the token |
+| `ATLASSIAN_EMAIL` | The email address of the Atlassian account that owns the token |
 | `JIRA_API_TOKEN` | The API token created in step 1 |
 
 ### Shell profile (recommended for local dev)
@@ -40,7 +40,7 @@ The Library reads Jira credentials from two environment variables:
 Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-export JIRA_EMAIL="you@example.com"
+export ATLASSIAN_EMAIL="you@example.com"
 export JIRA_API_TOKEN="your-api-token-here"
 ```
 
@@ -51,7 +51,7 @@ Then reload: `source ~/.zshrc`
 If you prefer a project-level `.env` file, add:
 
 ```
-JIRA_EMAIL=you@example.com
+ATLASSIAN_EMAIL=you@example.com
 JIRA_API_TOKEN=your-api-token-here
 ```
 
@@ -66,7 +66,7 @@ The Library's `.mcp.json` passes these variables into the MCP server process at 
   "library": {
     "command": "library",
     "env": {
-      "JIRA_EMAIL": "${JIRA_EMAIL}",
+      "ATLASSIAN_EMAIL": "${ATLASSIAN_EMAIL}",
       "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
     }
   }
@@ -151,7 +151,7 @@ This calls `GET /rest/api/3/project/search` and returns all projects visible to 
 
 If the tool returns an auth error:
 
-- Confirm `JIRA_EMAIL` and `JIRA_API_TOKEN` are set in your current shell session (`echo $JIRA_EMAIL`)
+- Confirm `ATLASSIAN_EMAIL` and `JIRA_API_TOKEN` are set in your current shell session (`echo $ATLASSIAN_EMAIL`)
 - Confirm `site_url` in `library-config.yaml` matches your Atlassian site exactly (no trailing slash, correct subdomain)
 - Confirm the token has not expired or been revoked at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 
@@ -159,7 +159,7 @@ If the tool returns an auth error:
 
 ## 6. Vault Builder Integration
 
-The Vault Builder's Jira extractor uses the same `JiraClient` and the same `JIRA_EMAIL` / `JIRA_API_TOKEN` credentials — no separate configuration required.
+The Vault Builder's Jira extractor uses the same `JiraClient` and the same `ATLASSIAN_EMAIL` / `JIRA_API_TOKEN` credentials — no separate configuration required.
 
 To enable Jira issue ingestion in the vault build, add a `jira` block under `vault_builder.sources` in `library-config.yaml`:
 
@@ -220,7 +220,7 @@ Jira Cloud REST API v3 fully supports email + API token authentication for all e
 
 ```
 [ ] API token created at id.atlassian.com
-[ ] JIRA_EMAIL exported in shell
+[ ] ATLASSIAN_EMAIL exported in shell
 [ ] JIRA_API_TOKEN exported in shell
 [ ] pm.provider: jira set in library-config.yaml
 [ ] pm.site_url set to https://your-instance.atlassian.net

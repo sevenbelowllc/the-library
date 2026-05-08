@@ -1,7 +1,7 @@
 """Integration tests for JiraClient against real Jira Cloud.
 
 These tests hit the live Jira REST API at https://sevenbelow.atlassian.net.
-They are skipped automatically when JIRA_EMAIL and JIRA_API_TOKEN are not set.
+They are skipped automatically when ATLASSIAN_EMAIL and JIRA_API_TOKEN are not set.
 
 Cleanup contract (LIBRARY-7):
     Every test that creates external state (issues, projects, links) registers
@@ -12,7 +12,7 @@ Cleanup contract (LIBRARY-7):
     failure. See TESTING-STANDARD.md §4.
 
 Run:
-    JIRA_EMAIL=you@example.com JIRA_API_TOKEN=tok \\
+    ATLASSIAN_EMAIL=you@example.com JIRA_API_TOKEN=tok \\
         python -m pytest tests/test_jira_integration.py -v
 """
 
@@ -35,9 +35,9 @@ logger = logging.getLogger(__name__)
 # Skip decorator — applied to every test in this module
 # ---------------------------------------------------------------------------
 
-SKIP_REASON = "JIRA_EMAIL and JIRA_API_TOKEN required for integration tests"
+SKIP_REASON = "ATLASSIAN_EMAIL and JIRA_API_TOKEN required for integration tests"
 requires_jira = pytest.mark.skipif(
-    not (os.environ.get("JIRA_EMAIL") and os.environ.get("JIRA_API_TOKEN")),
+    not (os.environ.get("ATLASSIAN_EMAIL") and os.environ.get("JIRA_API_TOKEN")),
     reason=SKIP_REASON,
 )
 

@@ -16,7 +16,7 @@ from library_server.pm.jira_client import JiraApiError, JiraClient
 @pytest.fixture()
 def _env_vars(monkeypatch: pytest.MonkeyPatch):
     """Set required Jira env vars."""
-    monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
     monkeypatch.setenv("JIRA_API_TOKEN", "tok-abc123")
 
 
@@ -41,13 +41,13 @@ class TestJiraClientInit:
         assert c._auth_header == f"Basic {expected}"
 
     def test_raises_without_email(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("JIRA_EMAIL", raising=False)
+        monkeypatch.delenv("ATLASSIAN_EMAIL", raising=False)
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
-        with pytest.raises(ValueError, match="JIRA_EMAIL"):
+        with pytest.raises(ValueError, match="ATLASSIAN_EMAIL"):
             JiraClient(site_url="https://x.atlassian.net")
 
     def test_raises_without_token(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("JIRA_EMAIL", "a@b.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "a@b.com")
         monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
         with pytest.raises(ValueError, match="JIRA_API_TOKEN"):
             JiraClient(site_url="https://x.atlassian.net")

@@ -27,10 +27,10 @@ class JiraClient:
     """Async Jira REST API v3 client with Basic Auth."""
 
     def __init__(self, site_url: str, timeout: float = 15.0) -> None:
-        email = os.environ.get("JIRA_EMAIL")
+        email = os.environ.get("ATLASSIAN_EMAIL")
         token = os.environ.get("JIRA_API_TOKEN")
         if not email:
-            raise ValueError("JIRA_EMAIL environment variable is required")
+            raise ValueError("ATLASSIAN_EMAIL environment variable is required")
         if not token:
             raise ValueError("JIRA_API_TOKEN environment variable is required")
 

@@ -12,7 +12,7 @@ class TestFetchIssueSummary:
 
     @pytest.fixture(autouse=True)
     def setup_env(self, monkeypatch):
-        monkeypatch.setenv("JIRA_EMAIL", "user@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "user@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
 
     @pytest.mark.asyncio
@@ -55,7 +55,7 @@ class TestFetchIssueSummary:
 
     @pytest.mark.asyncio
     async def test_missing_env_vars_returns_none(self, monkeypatch):
-        monkeypatch.delenv("JIRA_EMAIL", raising=False)
+        monkeypatch.delenv("ATLASSIAN_EMAIL", raising=False)
         monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
         result = await fetch_issue_summary(
             base_url="https://example.atlassian.net",

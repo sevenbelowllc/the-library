@@ -59,7 +59,7 @@ pm:
   #   - key: "PROJ"
   #     name: "My Project"
   #
-  # Jira requires JIRA_EMAIL and JIRA_API_TOKEN env vars.
+  # Jira requires ATLASSIAN_EMAIL and JIRA_API_TOKEN env vars.
   # See docs/setup/jira-setup.md for full setup instructions.
 
 # Graphify — cross-document relationship queries (optional)

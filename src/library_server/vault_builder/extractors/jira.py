@@ -35,8 +35,8 @@ class JiraExtractor(BaseExtractor):
             errors.append("Missing required config: projects")
         if not os.environ.get("JIRA_API_TOKEN"):
             errors.append("Missing env var: JIRA_API_TOKEN")
-        if not os.environ.get("JIRA_EMAIL"):
-            errors.append("Missing env var: JIRA_EMAIL")
+        if not os.environ.get("ATLASSIAN_EMAIL"):
+            errors.append("Missing env var: ATLASSIAN_EMAIL")
         return errors
 
     def _get_client(self) -> JiraClient:

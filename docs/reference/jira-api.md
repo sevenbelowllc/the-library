@@ -18,7 +18,7 @@ Authorization: Basic <base64(email:api_token)>
 import base64, os
 
 credentials = base64.b64encode(
-    f"{os.environ['JIRA_EMAIL']}:{os.environ['JIRA_API_TOKEN']}".encode()
+    f"{os.environ['ATLASSIAN_EMAIL']}:{os.environ['JIRA_API_TOKEN']}".encode()
 ).decode()
 headers = {"Authorization": f"Basic {credentials}"}
 ```
@@ -27,7 +27,7 @@ headers = {"Authorization": f"Basic {credentials}"}
 
 | Variable | Description |
 |----------|-------------|
-| `JIRA_EMAIL` | The email address of the Jira account that owns the API token |
+| `ATLASSIAN_EMAIL` | The email address of the Jira account that owns the API token |
 | `JIRA_API_TOKEN` | API token from [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) |
 
 The `JiraClient` reads these variables at construction time. They are never written to disk or logs.
@@ -143,7 +143,7 @@ class JiraApiError(Exception):
 | Status | Meaning | Common Cause |
 |--------|---------|-------------|
 | `400` | Bad Request | Invalid field value, missing required field, malformed ADF, invalid project key format |
-| `401` | Unauthorized | `JIRA_EMAIL` or `JIRA_API_TOKEN` missing, expired, or incorrect |
+| `401` | Unauthorized | `ATLASSIAN_EMAIL` or `JIRA_API_TOKEN` missing, expired, or incorrect |
 | `403` | Forbidden | Authenticated user lacks permission for the operation (e.g., project creation requires admin) |
 | `404` | Not Found | Issue key, project key, or transition ID does not exist |
 
@@ -160,7 +160,7 @@ except JiraApiError as e:
     if e.status_code == 404:
         print(f"Issue not found: {e.endpoint}")
     elif e.status_code == 401:
-        print("Check JIRA_EMAIL and JIRA_API_TOKEN env vars")
+        print("Check ATLASSIAN_EMAIL and JIRA_API_TOKEN env vars")
     else:
         raise
 ```

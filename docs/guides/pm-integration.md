@@ -107,7 +107,7 @@ If you require custom or strict review gates (for example, enforcing a transitio
 Environment variables required:
 
 ```bash
-export JIRA_EMAIL=you@example.com
+export ATLASSIAN_EMAIL=you@example.com
 export JIRA_API_TOKEN=your_api_token
 ```
 
