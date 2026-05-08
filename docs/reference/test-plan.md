@@ -40,7 +40,7 @@ python -m pytest tests/test_jira_client.py -v
 To run integration tests (requires credentials):
 
 ```bash
-JIRA_EMAIL=you@example.com JIRA_API_TOKEN=tok \
+ATLASSIAN_EMAIL=you@example.com JIRA_API_TOKEN=tok \
     python -m pytest tests/test_jira_integration.py -v
 ```
 
@@ -95,13 +95,13 @@ They are automatically skipped when credentials are not set.
 
 ### Prerequisites
 
-- `JIRA_EMAIL` -- Atlassian account email with access to the sevenbelow site
+- `ATLASSIAN_EMAIL` -- Atlassian account email with access to the sevenbelow site
 - `JIRA_API_TOKEN` -- API token generated at https://id.atlassian.com/manage-profile/security/api-tokens
 - Project `DEIOCAP` must exist on the Jira site
 
 ### Skip condition
 
-Tests are skipped unless both `JIRA_EMAIL` and `JIRA_API_TOKEN` are set in the
+Tests are skipped unless both `ATLASSIAN_EMAIL` and `JIRA_API_TOKEN` are set in the
 environment.
 
 ### Test inventory
@@ -160,7 +160,7 @@ significant refactor.
 ### CI behaviour
 
 - **Unit tests** run on every push (no credentials required)
-- **Integration tests** skipped in CI by default (no `JIRA_EMAIL`/`JIRA_API_TOKEN`)
+- **Integration tests** skipped in CI by default (no `ATLASSIAN_EMAIL`/`JIRA_API_TOKEN`)
 - To run integration tests in CI, add the secrets to the pipeline environment
 - **Coverage gate:** 88% minimum enforced by `pytest-cov` in `pyproject.toml`
 

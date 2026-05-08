@@ -37,7 +37,7 @@ If config is invalid or missing, stop and suggest running `library:config vault`
 Dispatch parallel Explore subagents to check:
 
 - Axon CLI available (if `axon_bridge` selected)
-- Jira auth working (if `jira` selected) — check `JIRA_EMAIL` and `JIRA_API_TOKEN` env vars
+- Jira auth working (if `jira` selected) — check `ATLASSIAN_EMAIL` and `JIRA_API_TOKEN` env vars
 - Graphify importable (if enabled in config)
 
 Report pass/fail per check. If any critical check fails, warn before proceeding.

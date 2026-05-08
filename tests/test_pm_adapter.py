@@ -21,7 +21,7 @@ class TestJiraAdapter:
 
     def test_implements_interface(self, monkeypatch):
         """JiraAdapter should implement PMAdapter."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         assert isinstance(adapter, PMAdapter)
@@ -29,7 +29,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_create_task(self, monkeypatch):
         """create_task should call client.create_issue and return TaskResult."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue = AsyncMock(return_value={
@@ -54,7 +54,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_create_task_with_epic(self, monkeypatch):
         """create_task should pass epic_id as parent_key to the Jira client."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue = AsyncMock(return_value={
@@ -83,7 +83,7 @@ class TestJiraAdapter:
         (no silent swallowing)."""
         import logging
 
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue = AsyncMock(return_value={
@@ -103,7 +103,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_create_epic(self, monkeypatch):
         """create_epic should return an EpicResult."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue = AsyncMock(return_value={
@@ -119,7 +119,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_update_task_with_comment(self, monkeypatch):
         """update_task should add a comment when provided."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.add_comment = AsyncMock(return_value={})
@@ -140,7 +140,7 @@ class TestJiraAdapter:
         them only by their ``to`` status. The adapter must match the requested status
         against ``transition.to.name`` and call transition_issue with the matched id.
         """
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
@@ -165,7 +165,7 @@ class TestJiraAdapter:
     async def test_update_task_matches_named_transition(self, monkeypatch):
         """update_task should also match when requested status equals transition.name
         (covers Jira workflows where transitions have semantic names)."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
@@ -191,7 +191,7 @@ class TestJiraAdapter:
         (see 2026-04-17 audit failure)."""
         from library_server.pm.adapter import TransitionNotAvailableError
 
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
@@ -222,7 +222,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_update_task_no_status_does_not_raise(self, monkeypatch):
         """update_task with no status must not call get_transitions or raise."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock()
@@ -240,7 +240,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_query_tasks(self, monkeypatch):
         """query_tasks should return a list of TaskResults."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.search_issues = AsyncMock(return_value={
@@ -257,7 +257,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_query_tasks_with_filters(self, monkeypatch):
         """query_tasks should build JQL with status and label filters."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.search_issues = AsyncMock(return_value={
@@ -278,7 +278,7 @@ class TestJiraAdapter:
         closed/blocked lists — not by a hardcoded 4-state enum. Workflows like
         Jira's default ("To Do" / "In Progress" / "In Review" / "Done") must
         route correctly: In Review is OPEN, not silently collapsed to closed."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.search_issues = AsyncMock(return_value={
@@ -306,7 +306,7 @@ class TestJiraAdapter:
     async def test_sync_state_honors_custom_closed_statuses(self, monkeypatch):
         """When a caller configures pm.workflow.closed to a non-default name
         (e.g. ``Shipped``), sync_state must classify by that name."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(
             site_url="https://test.atlassian.net",
@@ -327,7 +327,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_get_transitions(self, monkeypatch):
         """get_transitions should preserve Jira's raw target-status names verbatim."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_transitions = AsyncMock(return_value={
@@ -349,7 +349,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_create_project_auto_lead(self, monkeypatch):
         """create_project should auto-fetch lead_account_id via get_myself."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_myself = AsyncMock(return_value={"accountId": "abc-123"})
@@ -374,7 +374,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_list_projects(self, monkeypatch):
         """list_projects should return list of ProjectResult."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.list_projects = AsyncMock(return_value={
@@ -393,7 +393,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_get_project(self, monkeypatch):
         """get_project should return a ProjectResult."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_project = AsyncMock(return_value={
@@ -409,7 +409,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_assign_task(self, monkeypatch):
         """assign_task should call assign_issue and return updated TaskResult."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.assign_issue = AsyncMock(return_value=None)
@@ -425,7 +425,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_link_issues(self, monkeypatch):
         """link_issues should call create_issue_link."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.create_issue_link = AsyncMock(return_value=None)
@@ -439,7 +439,7 @@ class TestJiraAdapter:
         20 comments, rendering ADF description to plain text."""
         from library_server.types import IssueDetail
 
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
 
@@ -507,7 +507,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_get_issue_handles_missing_fields(self, monkeypatch):
         """get_issue tolerates missing assignee/parent/description/comments."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
 
@@ -534,7 +534,7 @@ class TestJiraAdapter:
     @pytest.mark.asyncio
     async def test_get_link_types(self, monkeypatch):
         """get_link_types should return list of dicts."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
         adapter = JiraAdapter(site_url="https://test.atlassian.net")
         adapter.client.get_link_types = AsyncMock(return_value={

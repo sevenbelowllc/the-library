@@ -218,7 +218,7 @@ class TestSafetyGuards:
 
     def _stub_jira(self, monkeypatch, report):
         """Patch scan() and JiraClient so main() runs without network."""
-        monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
         monkeypatch.setenv("JIRA_API_TOKEN", "tok")
 
         async def fake_scan(client, *, min_age_hours=0):

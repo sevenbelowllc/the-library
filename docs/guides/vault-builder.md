@@ -246,7 +246,7 @@ Returns validation errors, enabled sources, and optionally the detailed config f
 The Jira extractor requires:
 
 - `JIRA_API_TOKEN` -- Atlassian API token
-- `JIRA_EMAIL` -- Email associated with the token
+- `ATLASSIAN_EMAIL` -- Email associated with the token
 
 The Axon Bridge extractor requires the `axon` CLI to be installed and available on `$PATH`.
 
@@ -344,7 +344,7 @@ The Jira extractor needs authentication. Set the environment variables:
 
 ```bash
 export JIRA_API_TOKEN="your-api-token"
-export JIRA_EMAIL="your-email@example.com"
+export ATLASSIAN_EMAIL="your-email@example.com"
 ```
 
 Generate tokens at https://id.atlassian.com/manage-profile/security/api-tokens.

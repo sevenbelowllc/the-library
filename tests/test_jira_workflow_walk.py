@@ -4,7 +4,7 @@ Walks the full workflow on a real issue: create -> In Progress -> In Review
 -> Done. Asserts each transition takes effect via ``JiraAdapter.get_issue``,
 and asserts ``TransitionNotAvailableError`` is raised for bogus status names.
 
-Skipped automatically when ``JIRA_EMAIL``/``JIRA_API_TOKEN`` are unset.
+Skipped automatically when ``ATLASSIAN_EMAIL``/``JIRA_API_TOKEN`` are unset.
 
 Test issues are created in ``JIRA_TEST_PROJECT_KEY`` (default: ``DEIOCAP`` —
 the safe sandbox project). Teardown runs on pass, fail, and interrupt by
@@ -24,9 +24,9 @@ from library_server.pm.adapter import TransitionNotAvailableError
 from library_server.pm.jira import JiraAdapter
 from library_server.pm.jira_client import JiraClient
 
-SKIP_REASON = "JIRA_EMAIL and JIRA_API_TOKEN required for workflow-walk tests"
+SKIP_REASON = "ATLASSIAN_EMAIL and JIRA_API_TOKEN required for workflow-walk tests"
 requires_jira = pytest.mark.skipif(
-    not (os.environ.get("JIRA_EMAIL") and os.environ.get("JIRA_API_TOKEN")),
+    not (os.environ.get("ATLASSIAN_EMAIL") and os.environ.get("JIRA_API_TOKEN")),
     reason=SKIP_REASON,
 )
 
