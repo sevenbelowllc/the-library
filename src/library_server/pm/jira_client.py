@@ -12,8 +12,6 @@ from typing import Any
 
 import httpx
 
-from library_server.pm.md_to_adf import md_to_adf
-
 
 class JiraApiError(Exception):
     """Raised when the Jira API returns a non-2xx status code."""
@@ -379,9 +377,14 @@ class JiraClient:
 # ---------------------------------------------------------------------------
 
 def _to_adf(text: str) -> dict[str, Any]:
-    """Convert a markdown string to Atlassian Document Format (ADF).
-
-    Delegates to library_server.pm.md_to_adf.md_to_adf so that descriptions
-    and comment bodies render rich text instead of literal markdown chars.
-    """
-    return md_to_adf(text)
+    """Convert plain text to Atlassian Document Format (ADF)."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}],
+            },
+        ],
+    }
