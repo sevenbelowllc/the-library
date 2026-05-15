@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
 
 
 VAULT_DIRS = ["_schema", "sources", "wiki", "archive"]
+
+DEFAULT_OBSIDIAN_APP = {
+    "useMarkdownLinks": False,
+    "userIgnoreFilters": ["sources/raw"],
+}
 
 DEFAULT_COMPILE_PROTOCOL = """# Vault Compile Protocol
 
@@ -60,5 +66,13 @@ def init_vault(vault_path: str) -> dict:
     if not kb_yaml.exists():
         with open(kb_yaml, "w") as f:
             yaml.dump(DEFAULT_KB_YAML, f, default_flow_style=False)
+
+    # Create .obsidian settings — wikilinks enabled, raw sources excluded from search
+    obsidian_dir = path / ".obsidian"
+    obsidian_dir.mkdir(exist_ok=True)
+    app_json = obsidian_dir / "app.json"
+    if not app_json.exists():
+        with open(app_json, "w") as f:
+            json.dump(DEFAULT_OBSIDIAN_APP, f, indent=2)
 
     return {"status": "created", "path": str(path)}
