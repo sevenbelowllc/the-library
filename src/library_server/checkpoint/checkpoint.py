@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from library_server.redaction import redact, redact_list
 from library_server.types import CheckpointData
 
 
@@ -74,13 +75,18 @@ def list_checkpoints(checkpoint_dir: str) -> dict:
 
 
 def _render_checkpoint(data: CheckpointData) -> str:
-    """Render CheckpointData to markdown."""
+    """Render CheckpointData to markdown.
+
+    All user-supplied text fields are redacted via the redaction module before
+    rendering — checkpoints are persisted to the Reading Room and ingested by
+    the vault builder, so secrets must never reach this write path.
+    """
     lines = [
-        f"# {data.topic} — Session Checkpoint",
+        f"# {redact(data.topic)} — Session Checkpoint",
         "",
         f"> **Session Date:** {data.date}",
-        f"> **Status:** {data.status}",
-        f"> **Next Session:** {data.next_session}",
+        f"> **Status:** {redact(data.status)}",
+        f"> **Next Session:** {redact(data.next_session)}",
         "",
         "---",
         "",
@@ -89,21 +95,21 @@ def _render_checkpoint(data: CheckpointData) -> str:
     if data.accomplished:
         lines.append("## 1. What Was Accomplished")
         lines.append("")
-        for item in data.accomplished:
+        for item in redact_list(data.accomplished):
             lines.append(f"- {item}")
         lines.append("")
 
     if data.changes:
         lines.append("## 2. What Changed")
         lines.append("")
-        for item in data.changes:
+        for item in redact_list(data.changes):
             lines.append(f"- {item}")
         lines.append("")
 
     if data.next_actions:
         lines.append("## 3. What's Next")
         lines.append("")
-        for i, item in enumerate(data.next_actions, 1):
+        for i, item in enumerate(redact_list(data.next_actions), 1):
             lines.append(f"{i}. {item}")
         lines.append("")
 
@@ -113,13 +119,17 @@ def _render_checkpoint(data: CheckpointData) -> str:
         lines.append("| # | Question | Options | Impact |")
         lines.append("|---|----------|---------|--------|")
         for i, d in enumerate(data.open_decisions, 1):
-            lines.append(f"| {i} | {d.get('question', '')} | {d.get('options', '')} | {d.get('impact', '')} |")
+            lines.append(
+                f"| {i} | {redact(d.get('question', ''))} "
+                f"| {redact(d.get('options', ''))} "
+                f"| {redact(d.get('impact', ''))} |"
+            )
         lines.append("")
 
     if data.key_context:
         lines.append("## 5. Key Context")
         lines.append("")
-        for item in data.key_context:
+        for item in redact_list(data.key_context):
             lines.append(f"- {item}")
         lines.append("")
 
@@ -129,7 +139,11 @@ def _render_checkpoint(data: CheckpointData) -> str:
         lines.append("| Memory File | Type | What Was Saved |")
         lines.append("|------------|------|---------------|")
         for m in data.memory_updates:
-            lines.append(f"| {m.get('file', '')} | {m.get('type', '')} | {m.get('content', '')} |")
+            lines.append(
+                f"| {redact(m.get('file', ''))} "
+                f"| {redact(m.get('type', ''))} "
+                f"| {redact(m.get('content', ''))} |"
+            )
         lines.append("")
 
     return "\n".join(lines)
