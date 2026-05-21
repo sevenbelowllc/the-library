@@ -10,6 +10,8 @@ import json
 import re
 from pathlib import Path
 
+from library_server.redaction import redact
+
 # Tools whose ``input.file_path`` we care about
 _FILE_TOOLS = frozenset({"Read", "Write", "Edit"})
 
@@ -112,6 +114,7 @@ def extract_decision_patterns(path: Path) -> list[str]:
             continue
         for pattern in _DECISION_PATTERNS:
             if pattern.search(content):
-                results.append(content)
+                # Redact before persisting — user prompts may contain secrets.
+                results.append(redact(content))
                 break  # only add message once even if multiple patterns match
     return results

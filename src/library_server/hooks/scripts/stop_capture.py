@@ -31,6 +31,7 @@ from library_server.hooks.transcript import (
     extract_files_from_transcript,
     extract_decision_patterns,
 )
+from library_server.redaction import redact_exception
 from library_server.state.session_state import update_session_turn
 
 
@@ -135,7 +136,10 @@ def process_stop(
                 new_domain=None,
             )
         except Exception as exc:
-            print(f"[library] stop_capture: failed to update SESSION.md: {exc}", file=sys.stderr)
+            print(
+                f"[library] stop_capture: failed to update SESSION.md: {redact_exception(exc)}",
+                file=sys.stderr,
+            )
 
     warning = _build_warning(context_usage, warn_pct, checkpoint_pct)
     return {"warning": warning}
