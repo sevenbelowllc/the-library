@@ -88,7 +88,77 @@ def test_rebuild_graph_success(mock_which, mock_run):
     mock_run.assert_called_once()
     args = mock_run.call_args[0][0]
     assert args[0] == "graphify"
-    assert "/my/vault/sources" in args[1]
+    # graphify 0.8 expects subcommand + path; we scan vault/raw/, not vault/sources/
+    assert args[1] in ("extract", "update")
+    assert "/my/vault/raw" in args[2]
+
+
+@patch("library_server.graph.orchestrator.subprocess.run")
+@patch("library_server.graph.orchestrator.shutil.which", return_value="/usr/local/bin/graphify")
+def test_rebuild_graph_deep_mode_uses_extract_subcommand(mock_which, mock_run):
+    """mode='deep' must invoke `graphify extract <raw_path>` (AST + semantic LLM)."""
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    rebuild_graph(vault_path="/v", graph_path="/v/raw/graphify-out/graph.json", mode="deep", enabled=True)
+    args = mock_run.call_args[0][0]
+    assert args[:2] == ["graphify", "extract"]
+    assert args[2] == "/v/raw"
+
+
+@patch("library_server.graph.orchestrator.subprocess.run")
+@patch("library_server.graph.orchestrator.shutil.which", return_value="/usr/local/bin/graphify")
+def test_rebuild_graph_shallow_mode_uses_update_subcommand(mock_which, mock_run):
+    """mode='shallow' must invoke `graphify update <raw_path>` (code-only, no LLM)."""
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    rebuild_graph(vault_path="/v", graph_path="/v/raw/graphify-out/graph.json", mode="shallow", enabled=True)
+    args = mock_run.call_args[0][0]
+    assert args[:2] == ["graphify", "update"]
+    assert args[2] == "/v/raw"
+
+
+@patch("library_server.graph.orchestrator.subprocess.run")
+@patch("library_server.graph.orchestrator.shutil.which", return_value="/usr/local/bin/graphify")
+def test_rebuild_graph_copies_output_to_configured_path(mock_which, mock_run, tmp_path):
+    """When configured graph_path differs from the default <raw>/graphify-out/graph.json,
+    rebuild_graph must copy the produced graph into the configured location."""
+    raw_dir = tmp_path / "vault" / "raw"
+    raw_dir.mkdir(parents=True)
+    default_out = raw_dir / "graphify-out" / "graph.json"
+    default_out.parent.mkdir(parents=True)
+    default_out.write_text('{"nodes": 1, "links": 0}')
+
+    configured = tmp_path / "elsewhere" / "graph.json"
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+    rebuild_graph(
+        vault_path=str(tmp_path / "vault"),
+        graph_path=str(configured),
+        mode="deep",
+        enabled=True,
+    )
+
+    assert configured.exists(), "graph.json should be copied to configured path"
+    assert configured.read_text() == '{"nodes": 1, "links": 0}'
+
+
+@patch("library_server.graph.orchestrator.subprocess.run")
+@patch("library_server.graph.orchestrator.shutil.which", return_value="/usr/local/bin/graphify")
+def test_rebuild_graph_no_copy_when_default_path_equals_configured(mock_which, mock_run, tmp_path):
+    """If configured graph_path is identical to graphify's default output, no copy needed."""
+    raw_dir = tmp_path / "vault" / "raw"
+    raw_dir.mkdir(parents=True)
+    default_out = raw_dir / "graphify-out" / "graph.json"
+    default_out.parent.mkdir(parents=True)
+    default_out.write_text('{"nodes": 0}')
+
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    result = rebuild_graph(
+        vault_path=str(tmp_path / "vault"),
+        graph_path=str(default_out),
+        mode="deep",
+        enabled=True,
+    )
+    assert result["status"] == "rebuilt"
+    # No exception even though copy would be a no-op (src == dst).
 
 
 @patch("library_server.graph.orchestrator.subprocess.run")
