@@ -241,11 +241,27 @@ class GraphifyRunner:
         raw_dir: Path,
         output_dir: Path,
         wiki_dir: Path,
+        regenerate_wiki: bool = False,
     ) -> dict[str, Any]:
         """Build graph from YAML frontmatter in extracted vault files.
 
         Reads title, domain, tags, and related fields from each .md file's
         YAML frontmatter to create nodes and edges — no LLM extraction needed.
+
+        Args:
+            raw_dir: vault root to scan recursively for .md files with YAML frontmatter
+            output_dir: where graph.json / graph.html / GRAPH_REPORT.md / .graphify_*
+                       artifacts are written
+            wiki_dir: target dir for to_wiki() auto-stubs. ONLY written to when
+                       regenerate_wiki=True. Pass a throwaway path otherwise — the
+                       directory is NOT touched when regenerate_wiki=False.
+            regenerate_wiki: when True, calls graphify.wiki.to_wiki() which writes
+                       auto-generated stub articles into wiki_dir. **Destructive** —
+                       overwrites any user-compiled wiki articles at that path with
+                       graph-derived stubs. Default False to protect compile output.
+                       Set True only when bootstrapping an empty vault. Discovered
+                       2026-05-22 when this step silently destroyed 15 compiled
+                       wiki articles.
         """
         if not self.config.get("enabled", False):
             return {"status": "disabled", "message": "Graphify is not enabled in config."}
@@ -257,7 +273,8 @@ class GraphifyRunner:
             }
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        wiki_dir.mkdir(parents=True, exist_ok=True)
+        if regenerate_wiki:
+            wiki_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             nodes, edges = self._parse_vault_frontmatter(raw_dir)
@@ -301,9 +318,13 @@ class GraphifyRunner:
             if graph.number_of_nodes() <= 5000:
                 to_html(graph, communities, str(output_dir / "graph.html"))
 
-            wiki_count = to_wiki(
-                graph, communities, wiki_dir, cohesion=cohesion, god_nodes_data=gods,
-            )
+            # Skip to_wiki by default — it overwrites user-compiled wiki articles
+            # with graph-derived auto-stubs. See the regenerate_wiki kwarg docstring.
+            wiki_count = 0
+            if regenerate_wiki:
+                wiki_count = to_wiki(
+                    graph, communities, wiki_dir, cohesion=cohesion, god_nodes_data=gods,
+                )
 
             analysis = {
                 "communities": {str(k): v for k, v in communities.items()},
@@ -319,6 +340,7 @@ class GraphifyRunner:
                 "edges": graph.number_of_edges(),
                 "communities": len(communities),
                 "wiki_articles": wiki_count,
+                "wiki_regenerated": regenerate_wiki,
                 "output_dir": str(output_dir),
                 "wiki_dir": str(wiki_dir),
             }
@@ -374,6 +396,8 @@ class GraphifyRunner:
                         "target": target,
                         "type": "related_to",
                         "weight": 1.0,
+                        "confidence": 1.0,
+                        "source_file": rel_path,
                     })
 
             # Build edges from shared domain — nodes in the same domain are connected
@@ -394,6 +418,8 @@ class GraphifyRunner:
                 "target": domain_node_id,
                 "type": "belongs_to_domain",
                 "weight": 0.5,
+                "confidence": 1.0,
+                "source_file": rel_path,
             })
 
         return nodes, edges

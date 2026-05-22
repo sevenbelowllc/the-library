@@ -140,8 +140,21 @@ class VaultBuildOrchestrator:
             else:
                 graphify_out = self.output_vault / "graphify-out"
                 wiki_dir = self.output_vault / "wiki"
+                # On a fresh `create` build the wiki/ dir is empty, so the
+                # to_wiki() auto-stubs are useful bootstrap content. On any
+                # other mode (enrich, re-run), wiki/ likely holds compiled
+                # articles — never regenerate. Per 2026-05-22 post-mortem.
+                # Path.glob() on a non-existent dir returns an empty iterator,
+                # so this expression is safe whether wiki_dir exists or not.
+                regenerate_wiki = (
+                    self.mode == "create"
+                    and not any(wiki_dir.glob("*.md"))
+                )
                 graphify_result = await self.graphify_runner.build_from_vault(
-                    raw_dir=raw_dir, output_dir=graphify_out, wiki_dir=wiki_dir,
+                    raw_dir=raw_dir,
+                    output_dir=graphify_out,
+                    wiki_dir=wiki_dir,
+                    regenerate_wiki=regenerate_wiki,
                 )
                 graphify_status = graphify_result.get("status", "error")
                 graphify_message = graphify_result.get("message", "")

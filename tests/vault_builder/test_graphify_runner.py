@@ -649,3 +649,113 @@ def test_parse_vault_frontmatter_skips_no_frontmatter(runner, tmp_path: Path):
     nodes, edges = runner._parse_vault_frontmatter(raw_dir)
     content_nodes = [n for n in nodes if n["type"] != "domain"]
     assert len(content_nodes) == 0
+
+
+# --- regenerate_wiki kwarg: protect user wiki content from to_wiki() ---
+
+async def test_build_from_vault_skips_to_wiki_by_default(runner, tmp_path: Path):
+    """Default regenerate_wiki=False must NOT call to_wiki(), preserving user content."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "a.md").write_text(
+        "---\ntitle: A\nsource_type: spec\ndomain: x\nrelated: []\n---\n# A\n"
+    )
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    user_article = wiki_dir / "user.md"
+    user_article.write_text("USER CONTENT — MUST NOT BE OVERWRITTEN")
+
+    mock_graph = MagicMock()
+    mock_graph.number_of_nodes.return_value = 2
+    mock_graph.number_of_edges.return_value = 0
+
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", return_value=mock_graph), \
+         patch("library_server.vault_builder.graphify_runner.cluster", return_value={0: ["A"]}), \
+         patch("library_server.vault_builder.graphify_runner.score_all", return_value={0: 0.8}), \
+         patch("library_server.vault_builder.graphify_runner.god_nodes", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.surprising_connections", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.generate", return_value="# Report"), \
+         patch("library_server.vault_builder.graphify_runner.to_json"), \
+         patch("library_server.vault_builder.graphify_runner.to_html"), \
+         patch("library_server.vault_builder.graphify_runner.to_wiki", return_value=5) as mock_to_wiki:
+
+        result = await runner.build_from_vault(
+            raw_dir=raw_dir, output_dir=tmp_path / "out", wiki_dir=wiki_dir,
+        )
+
+    assert result["status"] == "success"
+    assert result["wiki_regenerated"] is False
+    assert result["wiki_articles"] == 0
+    mock_to_wiki.assert_not_called()
+    # User content is intact.
+    assert user_article.read_text() == "USER CONTENT — MUST NOT BE OVERWRITTEN"
+
+
+async def test_build_from_vault_calls_to_wiki_when_regenerate_true(runner, tmp_path: Path):
+    """Explicit regenerate_wiki=True must call to_wiki() and report wiki_articles."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "a.md").write_text(
+        "---\ntitle: A\nsource_type: spec\ndomain: x\nrelated: []\n---\n# A\n"
+    )
+
+    mock_graph = MagicMock()
+    mock_graph.number_of_nodes.return_value = 2
+    mock_graph.number_of_edges.return_value = 0
+
+    with patch("library_server.vault_builder.graphify_runner.build_from_json", return_value=mock_graph), \
+         patch("library_server.vault_builder.graphify_runner.cluster", return_value={0: ["A"]}), \
+         patch("library_server.vault_builder.graphify_runner.score_all", return_value={0: 0.8}), \
+         patch("library_server.vault_builder.graphify_runner.god_nodes", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.surprising_connections", return_value=[]), \
+         patch("library_server.vault_builder.graphify_runner.generate", return_value="# Report"), \
+         patch("library_server.vault_builder.graphify_runner.to_json"), \
+         patch("library_server.vault_builder.graphify_runner.to_html"), \
+         patch("library_server.vault_builder.graphify_runner.to_wiki", return_value=7) as mock_to_wiki:
+
+        result = await runner.build_from_vault(
+            raw_dir=raw_dir,
+            output_dir=tmp_path / "out",
+            wiki_dir=tmp_path / "wiki",
+            regenerate_wiki=True,
+        )
+
+    assert result["status"] == "success"
+    assert result["wiki_regenerated"] is True
+    assert result["wiki_articles"] == 7
+    mock_to_wiki.assert_called_once()
+
+
+# --- edge schema: confidence + source_file required by graphify 0.8+ ---
+
+def test_parse_vault_frontmatter_edges_include_confidence_and_source_file(runner, tmp_path: Path):
+    """Every edge must carry `confidence` and `source_file` so graphify 0.8
+    validators don't emit "Edge N missing required field" warnings."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "alpha.md").write_text(
+        "---\ntitle: Alpha\ndomain: core\nrelated:\n  - '[[Beta]]'\n---\n# Alpha\n"
+    )
+    (raw_dir / "beta.md").write_text(
+        "---\ntitle: Beta\ndomain: core\nrelated: []\n---\n# Beta\n"
+    )
+
+    _nodes, edges = runner._parse_vault_frontmatter(raw_dir)
+
+    assert len(edges) > 0
+    for edge in edges:
+        assert "source" in edge
+        assert "target" in edge
+        assert "confidence" in edge, f"edge missing confidence: {edge}"
+        assert "source_file" in edge, f"edge missing source_file: {edge}"
+        assert isinstance(edge["confidence"], (int, float))
+        assert isinstance(edge["source_file"], str)
+
+    # Specific check: related_to edge has both fields
+    related_edges = [e for e in edges if e["type"] == "related_to"]
+    assert any(e["source"] == "Alpha" and e["target"] == "Beta" for e in related_edges)
+
+    # Specific check: belongs_to_domain edges have both fields
+    domain_edges = [e for e in edges if e["type"] == "belongs_to_domain"]
+    assert len(domain_edges) >= 2  # both files belong to "core" domain

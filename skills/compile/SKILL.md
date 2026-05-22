@@ -35,7 +35,8 @@ For each entry in compile order:
 When `vault.obsidian.wikilinks` is `true` in config, use `[[wikilinks]]` and `#tags` for Obsidian-native output.
 
 ### Step 3: Add Frontmatter
-Each wiki article gets YAML frontmatter:
+Each wiki article gets YAML frontmatter. **The `related:` array is mandatory** — it mirrors every inline `[[wikilink]]` in the body so Graphify's `build_from_vault` can wire cross-reference edges. Inline wikilinks alone are invisible to the graph.
+
 ```yaml
 ---
 title: Article Title
@@ -44,14 +45,28 @@ compiled_from:
   - sources/raw/prds/feature-x.md
   - sources/llm-generated/session-notes/2026-04-10.md
 last_compiled: 2026-04-10
+related:
+  - "[[other-article]]"
+  - "[[yet-another]]"
 ---
 ```
 
-### Step 4: Rebuild Graph
-If `graphify.auto_rebuild: true`, call `library:graph:rebuild`.
+### Step 4: Rebuild Graph — ALWAYS
+Call `library:graph:rebuild` after every compile. The whole point of compile is to enrich the graph — wiki articles aren't useful until the graph reflects them.
 
-### Step 5: Report
-Display: articles compiled, tags generated, sources consumed.
+This goes through the free `build_from_vault()` frontmatter path (no LLM cost). The `graphify.auto_rebuild` config flag gates ingest-triggered rebuilds, NOT the compile path.
+
+**Safety:** `GraphifyRunner.build_from_vault()` takes a `regenerate_wiki: bool = False` kwarg. The orchestrator passes `True` only when both `mode == "create"` AND `wiki/` is empty — protecting compiled articles from the `to_wiki()` auto-stub regeneration that historically destroyed them.
+
+### Step 5: Verify
+After rebuild, assert:
+- `jq '.nodes | length' <graph.json>` > pre-compile node count
+- At least one node where `source_file` matches `wiki/<your-article>.md`
+
+If either fails, compile is incomplete. Surface to operator.
+
+### Step 6: Report
+Display: articles compiled, tags generated, sources consumed, graph node delta.
 
 ## Idempotency
 
