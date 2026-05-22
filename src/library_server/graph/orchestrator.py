@@ -19,13 +19,19 @@ def rebuild_graph(
     mode: str = "deep",
     enabled: bool = True,
 ) -> dict:
-    """Trigger Graphify to rebuild the knowledge graph from vault sources.
+    """Trigger Graphify to rebuild the knowledge graph from vault raw sources.
 
-    Shells out to `graphify <vault_path>/sources --update --mode <mode>`.
+    Shells out to graphify 0.8+ subcommands:
+      - mode == "deep"    -> ``graphify extract <raw_path>``  (AST + semantic LLM)
+      - mode == "shallow" -> ``graphify update <raw_path>``   (code-only, no LLM)
+
+    Graphify always writes to ``<raw_path>/graphify-out/graph.json``. If the
+    configured ``graph_path`` differs, this function copies the produced graph
+    into place.
 
     Args:
         vault_path: Root path to the vault.
-        graph_path: Where to write graph.json.
+        graph_path: Where the graph.json should ultimately live (per config).
         mode: 'deep' or 'shallow'.
         enabled: If False, return graceful disabled message.
 
@@ -41,18 +47,31 @@ def rebuild_graph(
             "message": "Graphify CLI not installed. Run: pip install the-library[graphify]",
         }
 
-    source_path = str(Path(vault_path) / "sources")
+    raw_path = str(Path(vault_path) / "raw")
+    subcmd = "extract" if mode == "deep" else "update"
     try:
         result = subprocess.run(
-            ["graphify", source_path, "--update", "--mode", mode, "--output", graph_path],
+            ["graphify", subcmd, raw_path],
             capture_output=True,
             text=True,
             timeout=300,
         )
-        if result.returncode == 0:
-            return {"status": "rebuilt", "message": f"Graph rebuilt at {graph_path}"}
-        else:
+        if result.returncode != 0:
             return {"status": "error", "message": f"Graphify failed: {result.stderr}"}
+
+        # graphify 0.8 always writes to <raw_path>/graphify-out/graph.json —
+        # mirror to the configured graph_path if it differs and the source exists.
+        default_out = Path(raw_path) / "graphify-out" / "graph.json"
+        configured = Path(graph_path) if graph_path else None
+        if (
+            configured
+            and configured.resolve() != default_out.resolve()
+            and default_out.exists()
+        ):
+            configured.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(default_out, configured)
+
+        return {"status": "rebuilt", "message": f"Graph rebuilt at {graph_path}"}
     except subprocess.TimeoutExpired:
         return {"status": "error", "message": "Graphify rebuild timed out (300s)"}
     except FileNotFoundError:
