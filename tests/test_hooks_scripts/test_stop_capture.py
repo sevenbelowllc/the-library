@@ -353,7 +353,15 @@ class TestMain:
     def test_main_outputs_warning_when_high_usage(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """main() outputs additionalContext JSON when context usage is high."""
+        """main() outputs systemMessage JSON when context usage is high.
+
+        Stop hooks MUST NOT use hookSpecificOutput — that shape is only valid
+        for PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch events.
+        The Claude Code harness rejects Stop output containing hookSpecificOutput
+        with a schema validation error ("(root): Invalid input"). The correct
+        channel for a Stop hook to surface a user-facing notification is the
+        top-level `systemMessage` string field.
+        """
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
         make_session_file(sessions_dir, context_usage=0.65)
@@ -379,8 +387,15 @@ class TestMain:
         output_str = captured.getvalue().strip()
         assert output_str
         output = json.loads(output_str)
-        assert "hookSpecificOutput" in output
-        assert "additionalContext" in output["hookSpecificOutput"]
+        # Regression guard: harness rejects Stop output with hookSpecificOutput.
+        assert "hookSpecificOutput" not in output, (
+            "Stop hook must not emit hookSpecificOutput — harness rejects it. "
+            f"Got: {output}"
+        )
+        # The correct shape: top-level systemMessage string.
+        assert "systemMessage" in output
+        assert isinstance(output["systemMessage"], str)
+        assert output["systemMessage"], "systemMessage must be non-empty"
 
     def test_main_silent_when_low_usage(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
