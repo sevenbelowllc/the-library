@@ -15,7 +15,15 @@ Stdin JSON fields:
     journal_path        -- path to the routing JSONL journal
 
 Stdout JSON (when warning exists):
-    {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": <str>}}
+    {"systemMessage": <str>}
+
+The Claude Code harness rejects Stop hook output containing `hookSpecificOutput`
+("Hook JSON output validation failed — (root): Invalid input"). That shape is
+only valid for PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch
+events — there is no "next context" to inject into when Claude has already
+stopped. The correct channel for a Stop hook to surface a user-facing
+notification (e.g., the checkpoint nudge here) is the top-level `systemMessage`
+string field, which the harness displays in the UI.
 
 Stdout (no warning):
     <empty>
@@ -166,12 +174,11 @@ def main() -> None:
         # Silent exit — no output
         return
 
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "additionalContext": result["warning"],
-        }
-    }
+    # Top-level `systemMessage` is the only valid channel for Stop hooks to
+    # surface a notification (harness rejects hookSpecificOutput on Stop —
+    # that shape is only for PreToolUse/UserPromptSubmit/PostToolUse/
+    # PostToolBatch where there is a "next context" to inject into).
+    output = {"systemMessage": result["warning"]}
     sys.stdout.write(json.dumps(output) + "\n")
 
 
