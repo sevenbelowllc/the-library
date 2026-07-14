@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,13 @@ import yaml
 
 
 CONFIG_FILENAME = "library-config.yaml"
+
+# load_config is called on every MCP tool invocation and by the zero-token
+# hooks; cache the parsed YAML keyed by (mtime_ns, size) so an unchanged
+# file is read from disk only once. Values are deep-copied on the way in
+# and out so callers mutating a LibraryConfig (set_value without save)
+# cannot poison the cache.
+_CONFIG_CACHE: dict[Path, tuple[int, int, dict[str, Any]]] = {}
 
 
 @dataclass
@@ -174,11 +182,21 @@ def resolve_standards(config: LibraryConfig, repo_name: str) -> list[dict]:
 
 
 def load_config(config_path: Path | None = None) -> LibraryConfig:
-    """Load config from yaml file. Returns empty config if file doesn't exist."""
+    """Load config from yaml file. Returns empty config if file doesn't exist.
+
+    Unchanged files are served from an in-process cache (see _CONFIG_CACHE).
+    """
     path = config_path or Path.cwd() / CONFIG_FILENAME
     if path.exists():
-        with open(path) as f:
-            raw = yaml.safe_load(f) or {}
+        stat = path.stat()
+        key = path.resolve()
+        cached = _CONFIG_CACHE.get(key)
+        if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+            raw = copy.deepcopy(cached[2])
+        else:
+            with open(path) as f:
+                raw = yaml.safe_load(f) or {}
+            _CONFIG_CACHE[key] = (stat.st_mtime_ns, stat.st_size, copy.deepcopy(raw))
     else:
         raw = {}
     return LibraryConfig(raw=raw, path=path)

@@ -594,3 +594,36 @@ class TestGetVaultOrchestrator:
             orch = _get_vault_orchestrator()
             # Should have registered the 2 configured extractors
             assert len(orch.registry._extractors) == 2
+
+
+# --- _get_pm_adapter caching ---
+
+class TestPMAdapterCache:
+    """The long-lived server must reuse one adapter (and its HTTP connection
+    pool) across tool calls, rebuilding only when pm config changes."""
+
+    def test_same_config_returns_same_adapter(self):
+        section = {"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}}
+        with patch("library_server.server.get_config", return_value=_make_config_mock(section)):
+            first = _get_pm_adapter()
+        with patch("library_server.server.get_config", return_value=_make_config_mock(dict(section))):
+            second = _get_pm_adapter()
+        assert second is first
+
+    def test_changed_config_returns_new_adapter(self):
+        with patch(
+            "library_server.server.get_config",
+            return_value=_make_config_mock(
+                {"pm": {"provider": "jira", "site_url": "https://a.atlassian.net"}}
+            ),
+        ):
+            first = _get_pm_adapter()
+        with patch(
+            "library_server.server.get_config",
+            return_value=_make_config_mock(
+                {"pm": {"provider": "jira", "site_url": "https://b.atlassian.net"}}
+            ),
+        ):
+            second = _get_pm_adapter()
+        assert second is not first
+        assert second.site_url == "https://b.atlassian.net"
