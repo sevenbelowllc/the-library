@@ -11,7 +11,7 @@ The previous test suite used JSON mocks which hid the real failure mode.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 import pytest
 import yaml
@@ -282,7 +282,7 @@ def _make_ts_subprocess_sequence(analyze_ok=True):
 
 async def test_typescript_extraction_writes_community_files(axon_extractor, output_dir: Path):
     with patch("subprocess.run", side_effect=_make_ts_subprocess_sequence()):
-        result = await axon_extractor.extract(output_dir / "repos")
+        await axon_extractor.extract(output_dir / "repos")
 
     community_dir = output_dir / "repos" / "compliance-core" / "communities"
     assert community_dir.exists()

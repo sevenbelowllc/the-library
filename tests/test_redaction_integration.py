@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 
 def _fake(prefix: str, body: str) -> str:

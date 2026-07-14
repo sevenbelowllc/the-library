@@ -53,7 +53,7 @@ async def main() -> int:
             print(f"  - {e}")
         return 1
 
-    print(f"== vault_builder preview ==")
+    print("== vault_builder preview ==")
     print(f"mode:              {vbc.mode}")
     print(f"output_vault:      {vbc.output_vault}")
     print(f"parallel:          {vbc.parallel}")
@@ -93,7 +93,7 @@ async def main() -> int:
         grand_total += survey.file_count
         grand_bytes += survey.total_size_bytes
 
-    print(f"== totals ==")
+    print("== totals ==")
     print(f"files: {grand_total}")
     print(f"bytes: {grand_bytes:,}")
     return 0

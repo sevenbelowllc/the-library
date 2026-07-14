@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -168,7 +168,7 @@ async def test_build_routes_code_through_ast_extract(runner, tmp_path: Path):
     mock_graph.number_of_edges.return_value = 1
 
     with patch("library_server.vault_builder.graphify_runner.graphify_detect") as mock_detect, \
-         patch("library_server.vault_builder.graphify_runner.collect_files", return_value=[raw_dir / "app.py"]) as mock_collect, \
+         patch("library_server.vault_builder.graphify_runner.collect_files", return_value=[raw_dir / "app.py"]), \
          patch("library_server.vault_builder.graphify_runner.extract") as mock_extract, \
          patch("library_server.vault_builder.graphify_runner.build_from_json", return_value=mock_graph), \
          patch("library_server.vault_builder.graphify_runner.cluster", return_value={0: ["a"]}), \

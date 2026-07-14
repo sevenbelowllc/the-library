@@ -27,7 +27,7 @@ async def fetch_issue_summary(
     """
     try:
         client = JiraClient(site_url=base_url)
-        data = await client.get_issue(issue_key, fields=["summary", "status"])
+        data = await client.get_issue(issue_key, fields="summary,status")
         return {
             "key": data["key"],
             "summary": data["fields"]["summary"],

@@ -6,7 +6,6 @@ import re
 import time
 from pathlib import Path
 
-import yaml
 
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.output import OutputWriter

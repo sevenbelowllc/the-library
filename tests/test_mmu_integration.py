@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from library_server.state.project_state import render_project_state, parse_project_state
 from library_server.state.session_state import render_session_state, parse_session_state

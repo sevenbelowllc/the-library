@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -271,8 +269,6 @@ class TestMain:
     def test_main_outputs_hook_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """main() should output JSON with hookSpecificOutput.additionalContext."""
         import io
-        import sys
-        from library_server.hooks.scripts.session_start import build_session_context
 
         reading_room = tmp_path / "reading-room"
         reading_room.mkdir()

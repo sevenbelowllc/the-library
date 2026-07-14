@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import pytest
 import yaml
 
 from library_server.memory.domain_seeder import seed_domains_from_claude_md

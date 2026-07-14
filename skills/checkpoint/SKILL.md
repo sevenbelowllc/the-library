@@ -29,7 +29,7 @@ Review the conversation and recent tool calls to collect:
 
 ### Step 2: Write Checkpoint
 
-Call `library:checkpoint:write` with gathered data:
+Call `library_checkpoint_write` with gathered data:
 
 - **topic**: kebab-case summary (e.g., "auth-middleware-refactor")
 - **status**: current state in one line
@@ -53,12 +53,12 @@ Content: path to checkpoint file, resume point, key decisions.
 ### Step 4: Update PM Tasks (if PM configured)
 
 For each PM task touched this session:
-- Call `library:pm:update` with a comment summarizing progress
+- Call `library_pm_update` with a comment summarizing progress
 - If task is complete, transition status (but only if verified — evidence before claims)
 
 ### Step 5: Check for Orphaned Work
 
-Call `library:pm:sync` for active projects. Compare accomplished work against open tasks.
+Call `library_pm_sync` for active projects. Compare accomplished work against open tasks.
 Flag any session work that doesn't match a PM task (orphaned work — should it be tracked?).
 
 ### Step 6: Detect gaps + auto-file follow-up tickets
@@ -85,7 +85,7 @@ Step 5's orphaned-work check compares accomplished vs open tickets. Step 6 goes 
    | Dep bump that violates pin policy | edited HARD-pin requirement file |
 
 2. **Cross-check each candidate against open PM:**
-   - Call `library:pm:query` with `status=To Do` + `In Progress` for active project key
+   - Call `library_pm_query` with `status=To Do` + `In Progress` for active project key
    - For each candidate, grep summaries + descriptions for keyword overlap (table name, file path, ticket-ID reference)
    - If candidate maps to existing ticket → skip (tracked)
    - If candidate has no match → it's a gap
@@ -101,7 +101,7 @@ Step 5's orphaned-work check compares accomplished vs open tickets. Step 6 goes 
 
    Ask: "File these N tickets in `<PROJECT_KEY>`? (yes / cherry-pick: 1,3,5 / no)"
 
-4. **On operator yes / cherry-pick:** call `library:pm:create_task` for each accepted gap. Description must include:
+4. **On operator yes / cherry-pick:** call `library_pm_create_task` for each accepted gap. Description must include:
    - **Detected during:** `<this checkpoint slug>` YYYY-MM-DD
    - **Source signal:** the literal grep / commit / file that triggered detection
    - **Action:** specific repair steps
@@ -164,10 +164,10 @@ Checkpoints **always** live under the Reading Room. By default the file is writt
 
 ## MCP Tools Used
 
-- `library:checkpoint:write` — write structured checkpoint file
-- `library:checkpoint:list` — list recent checkpoints (for resume flow)
-- `library:checkpoint:read` — read a specific checkpoint (for resume flow)
-- `library:pm:update` — comment on PM tasks (if PM configured)
-- `library:pm:sync` — check for orphaned work (if PM configured)
-- `library:pm:query` — find existing tickets to cross-check candidate gaps (Step 6)
-- `library:pm:create_task` — file new tickets for accepted gaps (Step 6)
+- `library_checkpoint_write` — write structured checkpoint file
+- `library_checkpoint_list` — list recent checkpoints (for resume flow)
+- `library_checkpoint_read` — read a specific checkpoint (for resume flow)
+- `library_pm_update` — comment on PM tasks (if PM configured)
+- `library_pm_sync` — check for orphaned work (if PM configured)
+- `library_pm_query` — find existing tickets to cross-check candidate gaps (Step 6)
+- `library_pm_create_task` — file new tickets for accepted gaps (Step 6)

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from library_server import __version__
 from library_server.cli import (
     _cmd_doctor,
     _cmd_init,
@@ -35,7 +36,7 @@ from library_server.cli import (
 class TestGenerateConfig:
     def test_default_config(self):
         config = _generate_config("./reading-room", "./vault", "none")
-        assert 'version: "0.3.0"' in config
+        assert f'version: "{__version__}"' in config
         assert "reading_room:" in config
         assert "path: ./reading-room" in config
         assert "provider: none" in config
@@ -386,7 +387,7 @@ class TestMainDispatch:
                 main()
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert "0.3.0" in captured.out
+        assert __version__ in captured.out
 
     def test_dispatch_init(self, tmp_path: Path):
         """main() dispatches to _cmd_init when 'init' subcommand is given."""

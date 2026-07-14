@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 
 from library_server.pm.adapter import PMAdapter, TransitionNotAvailableError
-
-logger = logging.getLogger(__name__)
 from library_server.pm.jira_client import JiraClient
 from library_server.types import (
     EpicResult,
@@ -18,6 +16,8 @@ from library_server.types import (
     TaskResult,
     Transition,
 )
+
+logger = logging.getLogger(__name__)
 
 # Sensible defaults when the caller hasn't configured pm.workflow.closed /
 # pm.workflow.blocked. Match case-insensitively so "Done" / "done" / "DONE"

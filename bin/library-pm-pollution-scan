@@ -11,8 +11,8 @@ confirmation before any delete is performed. NEVER deletes without human
 sign-off. See TESTING-STANDARD.md §4.
 
 Usage:
-    JIRA_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan
-    JIRA_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan --execute
+    ATLASSIAN_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan
+    ATLASSIAN_EMAIL=... JIRA_API_TOKEN=... bin/library-pm-pollution-scan --execute
 """
 
 from __future__ import annotations
@@ -231,8 +231,8 @@ async def _amain(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not (os.environ.get("JIRA_EMAIL") and os.environ.get("JIRA_API_TOKEN")):
-        print("error: JIRA_EMAIL and JIRA_API_TOKEN must be set.", file=sys.stderr)
+    if not (os.environ.get("ATLASSIAN_EMAIL") and os.environ.get("JIRA_API_TOKEN")):
+        print("error: ATLASSIAN_EMAIL and JIRA_API_TOKEN must be set.", file=sys.stderr)
         return 2
 
     client = JiraClient(site_url=SITE_URL, timeout=30.0)
