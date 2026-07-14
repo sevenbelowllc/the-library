@@ -19,6 +19,7 @@ class TestFetchIssueSummary:
     async def test_successful_fetch_returns_correct_dict(self):
         with patch("library_server.hooks.jira_client.JiraClient") as MockClient:
             instance = MockClient.return_value
+            instance.aclose = AsyncMock()
             instance.get_issue = AsyncMock(return_value={
                 "key": "COS-42",
                 "fields": {
@@ -42,6 +43,7 @@ class TestFetchIssueSummary:
     async def test_api_error_returns_none(self):
         with patch("library_server.hooks.jira_client.JiraClient") as MockClient:
             instance = MockClient.return_value
+            instance.aclose = AsyncMock()
             instance.get_issue = AsyncMock(
                 side_effect=JiraApiError(404, "Not found", "/rest/api/3/issue/COS-99"),
             )
@@ -64,3 +66,37 @@ class TestFetchIssueSummary:
             issue_key="COS-42",
         )
         assert result is None
+
+
+class TestClientLifecycle:
+    """fetch_issue_summary must close its one-shot JiraClient."""
+
+    @pytest.mark.asyncio
+    async def test_client_closed_after_success(self):
+        with patch("library_server.hooks.jira_client.JiraClient") as MockClient:
+            instance = MockClient.return_value
+            instance.get_issue = AsyncMock(return_value={
+                "key": "COS-1",
+                "fields": {"summary": "s", "status": {"name": "Done"}},
+            })
+            instance.aclose = AsyncMock()
+            await fetch_issue_summary(
+                base_url="https://example.atlassian.net",
+                api_token="t", email="e@x.com", issue_key="COS-1",
+            )
+            instance.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_client_closed_after_error(self):
+        with patch("library_server.hooks.jira_client.JiraClient") as MockClient:
+            instance = MockClient.return_value
+            instance.get_issue = AsyncMock(
+                side_effect=JiraApiError(500, "boom", "/rest/api/3/issue/COS-1"),
+            )
+            instance.aclose = AsyncMock()
+            result = await fetch_issue_summary(
+                base_url="https://example.atlassian.net",
+                api_token="t", email="e@x.com", issue_key="COS-1",
+            )
+            assert result is None
+            instance.aclose.assert_awaited_once()

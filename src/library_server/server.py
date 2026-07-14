@@ -336,17 +336,28 @@ async def library_pm_get_link_types() -> dict:
     return {"types": types}
 
 
+# Cache the adapter across tool calls so its JiraClient keeps one HTTP
+# connection pool alive for the server's lifetime. Keyed on the pm config
+# section: a config change (or a differing repr) rebuilds the adapter.
+_pm_adapter_cache: tuple[str, "PMAdapter"] | None = None
+
+
 def _get_pm_adapter() -> "PMAdapter":
-    """Get the configured PM adapter.
+    """Get the configured PM adapter (cached until pm config changes).
 
     Reads ``pm.workflow`` from library-config.yaml so sync_state classifies
     tasks according to the user's actual workflow state names rather than a
     hardcoded 4-bucket taxonomy. Missing config falls back to the adapter's
     built-in defaults.
     """
+    global _pm_adapter_cache
     config = get_config()
     pm_config = config.get_section("pm")
     provider = pm_config.get("provider", "none")
+
+    cache_key = repr(pm_config)
+    if _pm_adapter_cache is not None and _pm_adapter_cache[0] == cache_key:
+        return _pm_adapter_cache[1]
 
     workflow = pm_config.get("workflow") or {}
     closed_name = workflow.get("closed")
@@ -354,22 +365,26 @@ def _get_pm_adapter() -> "PMAdapter":
     closed_statuses = (closed_name,) if closed_name else None
     blocked_statuses = (blocked_name,) if blocked_name else None
 
+    adapter: "PMAdapter"
     if provider == "jira":
         from library_server.pm.jira import JiraAdapter
-        return JiraAdapter(
+        adapter = JiraAdapter(
             site_url=pm_config.get("site_url", ""),
             closed_statuses=closed_statuses,
             blocked_statuses=blocked_statuses,
         )
     elif provider == "linear":
         from library_server.pm.linear import LinearAdapter
-        return LinearAdapter(
+        adapter = LinearAdapter(
             api_key=pm_config.get("api_key", ""),
             closed_statuses=closed_statuses,
             blocked_statuses=blocked_statuses,
         )
     else:
         raise ValueError(f"PM provider '{provider}' not configured. Run library:config to set up.")
+
+    _pm_adapter_cache = (cache_key, adapter)
+    return adapter
 
 
 # --- Graph tools ---

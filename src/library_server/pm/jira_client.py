@@ -6,6 +6,7 @@ All other layers (adapter, MCP tools, vault builder) import from here.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 from typing import Any
@@ -13,6 +14,14 @@ from typing import Any
 import httpx
 
 from library_server.pm.md_to_adf import md_to_adf
+
+# Statuses worth retrying: rate limiting and transient gateway failures.
+_RETRYABLE_STATUSES = {429, 502, 503, 504}
+# Total attempts per request (initial + retries).
+_MAX_ATTEMPTS = 3
+# Exponential backoff base in seconds (0.5, 1.0, ...) when Jira sends no
+# Retry-After header.
+_BACKOFF_BASE = 0.5
 
 
 class JiraApiError(Exception):
@@ -28,7 +37,12 @@ class JiraApiError(Exception):
 class JiraClient:
     """Async Jira REST API v3 client with Basic Auth."""
 
-    def __init__(self, site_url: str, timeout: float = 15.0) -> None:
+    def __init__(
+        self,
+        site_url: str,
+        timeout: float = 15.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         email = os.environ.get("ATLASSIAN_EMAIL")
         token = os.environ.get("JIRA_API_TOKEN")
         if not email:
@@ -38,9 +52,33 @@ class JiraClient:
 
         self._site_url = site_url.rstrip("/")
         self._timeout = timeout
+        self._transport = transport
+        self._http: httpx.AsyncClient | None = None
         creds = base64.b64encode(f"{email}:{token}".encode()).decode()
         self._auth_header = f"Basic {creds}"
         self._epic_name_field_id: str | None = None
+
+    def _get_http(self) -> httpx.AsyncClient:
+        """Return the shared AsyncClient, creating it on first use.
+
+        One client per JiraClient instance keeps the TCP/TLS connection
+        alive across requests instead of handshaking on every call.
+        """
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=self._timeout, transport=self._transport)
+        return self._http
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client (reopened lazily if used again)."""
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+
+    async def __aenter__(self) -> "JiraClient":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.aclose()
 
     # ------------------------------------------------------------------
     # Internal request helper
@@ -54,15 +92,36 @@ class JiraClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
     ) -> Any:
-        """Make an authenticated request to the Jira REST API."""
+        """Make an authenticated request to the Jira REST API.
+
+        Rate-limit (429), transient gateway (502/503/504), and transport
+        errors are retried with backoff, honoring Retry-After when sent.
+        """
         url = f"{self._site_url}{path}"
         headers = {
             "Authorization": self._auth_header,
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=self._timeout) as http:
-            resp = await http.request(method, url, headers=headers, params=params, json=json)
+        http = self._get_http()
+        for attempt in range(_MAX_ATTEMPTS):
+            last_attempt = attempt == _MAX_ATTEMPTS - 1
+            try:
+                resp = await http.request(method, url, headers=headers, params=params, json=json)
+            except httpx.TransportError:
+                if last_attempt:
+                    raise
+                await asyncio.sleep(_BACKOFF_BASE * (2**attempt))
+                continue
+            if resp.status_code in _RETRYABLE_STATUSES and not last_attempt:
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after is not None and retry_after.isdigit():
+                    delay = float(retry_after)
+                else:
+                    delay = _BACKOFF_BASE * (2**attempt)
+                await asyncio.sleep(delay)
+                continue
+            break
 
         if resp.status_code == 204:
             return None
