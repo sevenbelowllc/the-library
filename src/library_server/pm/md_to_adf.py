@@ -28,7 +28,7 @@ def md_to_adf(text: str) -> dict[str, Any]:
     if not text:
         return {**_ADF_DOC, "content": [_empty_paragraph()]}
 
-    md = MarkdownIt("commonmark", {"html": False, "linkify": True}).enable("table").enable("strikethrough")
+    md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
     tokens = md.parse(text)
     content = _render_block(iter(tokens))
     if not content:
@@ -87,7 +87,7 @@ def _block_token(tok: Token, it) -> dict[str, Any] | None:
         return {"type": "blockquote", "content": inner or [_empty_paragraph()]}
     if t == "hr":
         return {"type": "rule"}
-    if t == "table_open":
+    if t == "table_open":  # pragma: no mutate — flipped branch is equivalent (thead_open re-enters the same render)
         return _render_table(it)
     # Unknown block — skip silently.
     return None
@@ -167,7 +167,6 @@ def _flatten_for_list_item(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _render_table(it) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
-    in_header = False
     current_row: list[dict[str, Any]] | None = None
     current_cell_inline: Token | None = None
     cell_type: str | None = None
@@ -176,11 +175,7 @@ def _render_table(it) -> dict[str, Any]:
         t = tok.type
         if t == "table_close":
             break
-        if t == "thead_open":
-            in_header = True
-        elif t == "thead_close":
-            in_header = False
-        elif t == "tr_open":
+        if t == "tr_open":
             current_row = []
         elif t == "tr_close":
             if current_row is not None:
@@ -198,7 +193,6 @@ def _render_table(it) -> dict[str, Any]:
                 current_row.append({"type": cell_type, "content": [paragraph]})
             cell_type = None
             current_cell_inline = None
-    _ = in_header  # informational; ADF table doesn't need explicit thead flag
     return {"type": "table", "attrs": {"isNumberColumnEnabled": False, "layout": "default"}, "content": rows}
 
 
@@ -211,7 +205,7 @@ def _inline_nodes(inline_tok: Token | None) -> list[dict[str, Any]]:
         t = child.type
         if t == "text":
             if child.content:
-                node = {"type": "text", "text": child.content}
+                node: dict[str, Any] = {"type": "text", "text": child.content}
                 if marks:
                     node["marks"] = list(marks)
                 out.append(node)

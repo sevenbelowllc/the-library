@@ -20,19 +20,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from library_server.vault_builder.graphify_runner import GraphifyRunner  # noqa: E402
 
 
-VAULT = Path("/Users/pollucts/workdir/sevenbelow/complyos-kb")
-GRAPH_OUT = VAULT / "graphify-out"
-GRAPH_JSON = GRAPH_OUT / "graph.json"
+def _resolve_vault(argv: list[str]) -> Path | None:
+    """Vault path from argv[1], else vault.path in ./library-config.yaml."""
+    if len(argv) > 1:
+        return Path(argv[1]).expanduser().resolve()
+    config = Path("library-config.yaml")
+    if config.exists():
+        import yaml
+
+        data = yaml.safe_load(config.read_text()) or {}
+        path = (data.get("vault") or {}).get("path")
+        if path:
+            return Path(path).expanduser().resolve()
+    return None
 
 
 async def main() -> int:
-    if not VAULT.is_dir():
-        print(f"ERROR: vault not found at {VAULT}")
+    vault = _resolve_vault(sys.argv)
+    if vault is None:
+        print(
+            "ERROR: no vault path. Pass one as an argument or run from a "
+            "directory with library-config.yaml (vault.path).\n"
+            f"usage: python {sys.argv[0]} [VAULT_PATH]"
+        )
+        return 1
+    graph_out = vault / "graphify-out"
+    graph_json = graph_out / "graph.json"
+
+    if not vault.is_dir():
+        print(f"ERROR: vault not found at {vault}")
         return 1
 
     baseline_nodes = 0
-    if GRAPH_JSON.exists():
-        baseline = json.loads(GRAPH_JSON.read_text())
+    if graph_json.exists():
+        baseline = json.loads(graph_json.read_text())
         baseline_nodes = len(baseline.get("nodes", []))
         print(f"baseline nodes: {baseline_nodes}")
 
@@ -50,9 +71,9 @@ async def main() -> int:
     # SAFETY: snapshot real wiki/ before any graphify call (to_wiki() in
     # build_from_vault otherwise overwrites user-compiled articles with
     # auto-stubs). Discovered 2026-05-22 — clobbered 15 articles.
-    real_wiki = VAULT / "wiki"
+    real_wiki = vault / "wiki"
     import shutil
-    snapshot_dir = Path(f"/tmp/wiki-snapshot-pre-rebuild")
+    snapshot_dir = Path("/tmp/wiki-snapshot-pre-rebuild")
     if snapshot_dir.exists():
         shutil.rmtree(snapshot_dir)
     if real_wiki.exists():
@@ -71,7 +92,7 @@ async def main() -> int:
     runner = GraphifyRunner(config={"enabled": True})
     print(f"scanning vault root, redirecting to_wiki -> {throwaway_wiki}")
     result = await runner.build_from_vault(
-        raw_dir=VAULT,
+        raw_dir=vault,
         output_dir=wiki_only_out,
         wiki_dir=throwaway_wiki,  # safety: divert to_wiki stubs
     )
@@ -85,11 +106,11 @@ async def main() -> int:
         return 1
 
     # Merge frontmatter graph INTO existing LLM-extracted graph.
-    merged_out = GRAPH_OUT / "merged.json"
+    merged_out = graph_out / "merged.json"
     print(f"merging existing graph with frontmatter graph -> {merged_out}")
     merge_cmd = [
         "graphify", "merge-graphs",
-        str(GRAPH_JSON),
+        str(graph_json),
         str(wiki_only_json),
         "--out", str(merged_out),
     ]
@@ -100,8 +121,8 @@ async def main() -> int:
         return 1
 
     # Replace primary graph with merged result.
-    shutil.copy2(merged_out, GRAPH_JSON)
-    print(f"replaced {GRAPH_JSON} with merged graph")
+    shutil.copy2(merged_out, graph_json)
+    print(f"replaced {graph_json} with merged graph")
 
     # POST-CHECK: did real wiki/ change? It must not.
     if real_wiki.exists() and snapshot_dir.exists():
@@ -116,11 +137,11 @@ async def main() -> int:
             return 1
         print(f"verified wiki/ untouched: {post_count} files, {post_loc} lines")
 
-    if not GRAPH_JSON.exists():
-        print(f"ERROR: graph.json not written at {GRAPH_JSON}")
+    if not graph_json.exists():
+        print(f"ERROR: graph.json not written at {graph_json}")
         return 1
 
-    new_graph = json.loads(GRAPH_JSON.read_text())
+    new_graph = json.loads(graph_json.read_text())
     nodes = new_graph.get("nodes", [])
     edges = new_graph.get("links", new_graph.get("edges", []))
     print(f"new nodes: {len(nodes)}  edges: {len(edges)}")
@@ -145,7 +166,7 @@ async def main() -> int:
         print(f"WARN: node count did not grow ({baseline_nodes} -> {len(nodes)})")
         return 2
 
-    print(f"OK: graph rebuilt, wiki layer present")
+    print("OK: graph rebuilt, wiki layer present")
     return 0
 
 

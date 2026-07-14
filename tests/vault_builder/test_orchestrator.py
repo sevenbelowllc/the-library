@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.types import SurveyResult, PreviewResult, ExtractResult
@@ -107,7 +106,7 @@ async def test_build_manifest_written(tmp_path: Path):
     registry.register(SuccessExtractor(config={"enabled": True}))
     graphify = GraphifyRunner(config={"enabled": False})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
-    result = await orch.build()
+    await orch.build()
     manifest = tmp_path / "vault" / "raw" / "_build-manifest.md"
     assert manifest.exists()
     assert "success" in manifest.read_text()
@@ -122,7 +121,7 @@ async def test_build_manifest_records_failures(tmp_path: Path):
     registry.register(FailExtractor(config={"enabled": True}))
     graphify = GraphifyRunner(config={"enabled": False})
     orch = VaultBuildOrchestrator(registry=registry, graphify_runner=graphify, output_vault=tmp_path / "vault", mode="create")
-    result = await orch.build()
+    await orch.build()
     manifest = tmp_path / "vault" / "raw" / "_build-manifest.md"
     assert manifest.exists()
     content = manifest.read_text()

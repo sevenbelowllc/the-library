@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from library_server.vault.init import init_vault, VAULT_DIRS

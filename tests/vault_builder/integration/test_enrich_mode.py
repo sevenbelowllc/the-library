@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from library_server.vault_builder.extractors.specs import SpecsExtractor
 from library_server.vault_builder.graphify_runner import GraphifyRunner

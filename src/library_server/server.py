@@ -1,10 +1,14 @@
 """The Library — MCP server entry point."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mcp.server.fastmcp import FastMCP
 
 from library_server.config import load_config, resolve_checkpoint_dir, LibraryConfig
+
+if TYPE_CHECKING:
+    from library_server.pm.adapter import PMAdapter
 
 mcp = FastMCP(
     "library",
@@ -157,7 +161,7 @@ async def library_pm_create_task(
     Pass epic_id (e.g. 'COS-8') to attach the task as a child of that epic.
     """
     adapter = _get_pm_adapter()
-    label_list = [l.strip() for l in labels.split(",") if l.strip()] if labels else []
+    label_list = [part.strip() for part in labels.split(",") if part.strip()] if labels else []
     result = await adapter.create_task(project_key, summary, description, label_list, epic_id=epic_id)
     return {"task_id": result.task_id, "summary": result.summary, "url": result.url}
 
@@ -245,11 +249,11 @@ async def library_pm_get_issue(task_id: str) -> dict:
 async def library_pm_query(project_key: str, status: str = "", labels: str = "") -> dict:
     """Query tasks by filter. Returns matching tasks."""
     adapter = _get_pm_adapter()
-    filters = {}
+    filters: dict = {}
     if status:
         filters["status"] = status
     if labels:
-        filters["labels"] = [l.strip() for l in labels.split(",")]
+        filters["labels"] = [part.strip() for part in labels.split(",")]
     results = await adapter.query_tasks(project_key, filters if filters else None)
     return {
         "count": len(results),
@@ -340,7 +344,6 @@ def _get_pm_adapter() -> "PMAdapter":
     hardcoded 4-bucket taxonomy. Missing config falls back to the adapter's
     built-in defaults.
     """
-    from library_server.pm.adapter import PMAdapter
     config = get_config()
     pm_config = config.get_section("pm")
     provider = pm_config.get("provider", "none")

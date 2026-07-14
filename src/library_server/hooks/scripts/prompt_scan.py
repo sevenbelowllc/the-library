@@ -27,7 +27,7 @@ import json
 import sys
 from pathlib import Path
 
-from library_server.hooks.dedup import get_dedup_path, is_domain_injected, mark_domain_injected
+from library_server.hooks.dedup import is_domain_injected, mark_domain_injected
 from library_server.hooks.domain_scanner import load_domain_manifests, scan_prompt
 from library_server.hooks.learning import log_routing_decision
 

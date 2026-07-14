@@ -50,7 +50,7 @@ src/library_server/       # Main package
   vault/                  # Vault operations
   vault_builder/          # Vault builder pipeline
     extractors/           # Source extraction plugins
-skills/                   # Claude Code skill definitions (11 skills)
+skills/                   # Claude Code skill definitions (12 skills)
 tests/                    # Test suite
 ```
 

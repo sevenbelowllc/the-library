@@ -44,7 +44,7 @@ For the full skill suite inside Claude Code:
 claude plugins install sevenbelowllc/the-library
 ```
 
-This installs 11 skills (`library:config`, `library:ingest`, `library:compile`, etc.) and wires the MCP server into your Claude Code session.
+This installs 12 skills (`library:config`, `library:ingest`, `library:compile`, etc.) and wires the MCP server into your Claude Code session.
 
 ## 4. Configure PM Integration (Optional)
 
