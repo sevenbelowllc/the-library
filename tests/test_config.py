@@ -322,3 +322,78 @@ def test_validate_pm_workflow_named_key_not_in_states(tmp_path: Path):
     config = load_config(cfg_path)
     result = validate_config(config)
     assert any("pm.workflow.in_progress" in w for w in result["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# load_config caching
+# ---------------------------------------------------------------------------
+
+class TestLoadConfigCache:
+    """load_config must not re-read/re-parse an unchanged file on every call."""
+
+    def _write(self, path: Path, data: dict) -> None:
+        with open(path, "w") as f:
+            yaml.dump(data, f)
+
+    def test_unchanged_file_is_parsed_only_once(self, tmp_path: Path, monkeypatch):
+        config_path = tmp_path / "library-config.yaml"
+        self._write(config_path, {"pm": {"provider": "jira"}})
+
+        import library_server.config as config_mod
+        calls = {"n": 0}
+        real_safe_load = yaml.safe_load
+
+        def counting_safe_load(stream):
+            calls["n"] += 1
+            return real_safe_load(stream)
+
+        monkeypatch.setattr(config_mod.yaml, "safe_load", counting_safe_load)
+
+        first = load_config(config_path)
+        second = load_config(config_path)
+        assert first.get_section("pm") == {"provider": "jira"}
+        assert second.get_section("pm") == {"provider": "jira"}
+        assert calls["n"] == 1
+
+    def test_cached_configs_are_isolated_copies(self, tmp_path: Path):
+        config_path = tmp_path / "library-config.yaml"
+        self._write(config_path, {"pm": {"provider": "jira"}})
+
+        first = load_config(config_path)
+        first.set_value("pm", "provider", "linear")  # mutate WITHOUT save
+
+        second = load_config(config_path)
+        assert second.get_section("pm") == {"provider": "jira"}
+
+    def test_modified_file_is_reloaded(self, tmp_path: Path):
+        config_path = tmp_path / "library-config.yaml"
+        self._write(config_path, {"pm": {"provider": "jira"}})
+        first = load_config(config_path)
+        assert first.get_section("pm") == {"provider": "jira"}
+
+        import os
+        self._write(config_path, {"pm": {"provider": "linear"}})
+        # Guarantee a distinct mtime even on coarse-granularity filesystems.
+        st = config_path.stat()
+        os.utime(config_path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+
+        second = load_config(config_path)
+        assert second.get_section("pm") == {"provider": "linear"}
+
+    def test_save_then_load_returns_updated_values(self, tmp_path: Path):
+        config_path = tmp_path / "library-config.yaml"
+        self._write(config_path, {"pm": {"provider": "jira"}})
+
+        config = load_config(config_path)
+        config.set_value("pm", "provider", "linear")
+        config.save()
+        import os
+        st = config_path.stat()
+        os.utime(config_path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+
+        reloaded = load_config(config_path)
+        assert reloaded.get_section("pm") == {"provider": "linear"}
+
+    def test_missing_file_returns_empty_config(self, tmp_path: Path):
+        config = load_config(tmp_path / "does-not-exist.yaml")
+        assert config.to_dict() == {}

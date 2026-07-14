@@ -182,7 +182,7 @@ class TestProcessPrompt:
         )
 
         assert journal.exists()
-        entries = [json.loads(l) for l in journal.read_text().splitlines() if l.strip()]
+        entries = [json.loads(line) for line in journal.read_text().splitlines() if line.strip()]
         assert len(entries) >= 1
         assert entries[-1]["match_type"] == "no_match"
 
@@ -203,7 +203,7 @@ class TestProcessPrompt:
             journal_path=journal,
         )
 
-        entries = [json.loads(l) for l in journal.read_text().splitlines() if l.strip()]
+        entries = [json.loads(line) for line in journal.read_text().splitlines() if line.strip()]
         assert any(e["match_type"] == "first_hit" for e in entries)
 
     def test_repeat_hit_returns_reminder(self, tmp_path: Path) -> None:

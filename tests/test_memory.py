@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytest
 
 from library_server.memory.scan import scan_memories
 from library_server.memory.aggregate import aggregate_memories

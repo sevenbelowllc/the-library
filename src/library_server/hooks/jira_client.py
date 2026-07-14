@@ -27,7 +27,10 @@ async def fetch_issue_summary(
     """
     try:
         client = JiraClient(site_url=base_url)
-        data = await client.get_issue(issue_key, fields=["summary", "status"])
+    except ValueError:
+        return None
+    try:
+        data = await client.get_issue(issue_key, fields="summary,status")
         return {
             "key": data["key"],
             "summary": data["fields"]["summary"],
@@ -37,3 +40,5 @@ async def fetch_issue_summary(
         return None
     except Exception:
         return None
+    finally:
+        await client.aclose()

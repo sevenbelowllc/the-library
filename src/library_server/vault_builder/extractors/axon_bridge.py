@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
 
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.output import OutputWriter
@@ -212,7 +211,7 @@ class AxonBridgeExtractor(BaseExtractor):
              f"RETURN n.name, n.file_path LIMIT 50"],
             capture_output=True, text=True, timeout=60, cwd=repo_path,
         )
-        members = []
+        members: list[tuple[str, str]] = []
         if result.returncode != 0:
             return members
         for line in result.stdout.splitlines():

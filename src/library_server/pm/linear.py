@@ -184,7 +184,7 @@ class LinearAdapter(PMAdapter):
                 project_key=project_key,
                 summary=i["title"],
                 status=i["state"]["name"],
-                labels=[l["name"] for l in i.get("labels", {}).get("nodes", [])],
+                labels=[lbl["name"] for lbl in i.get("labels", {}).get("nodes", [])],
                 url=i.get("url", ""),
             )
             for i in issues

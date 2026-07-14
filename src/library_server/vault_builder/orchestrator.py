@@ -110,7 +110,7 @@ class VaultBuildOrchestrator:
         # Convert exceptions to ExtractResult
         extract_results: list[ExtractResult] = []
         for i, result in enumerate(raw_results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 extract_results.append(ExtractResult(
                     source_name=extractors[i].name, errors=[str(result)], success=False,
                 ))
@@ -123,9 +123,9 @@ class VaultBuildOrchestrator:
         writer.write_manifest(extract_results, total_duration)
 
         # Graphify quality gate — require at least one code or document source to succeed
-        any_succeeded = any(r.success for r in extract_results)
+        any(r.success for r in extract_results)
         all_failed = all(not r.success for r in extract_results)
-        code_sources_succeeded = any(
+        any(
             r.success for r in extract_results
             if r.source_name in ("axon_bridge",)
         )
@@ -196,9 +196,9 @@ class VaultBuildOrchestrator:
         extractors = self.registry.get_by_names(sources) if sources else self.registry.get_enabled()
         tasks = [ext.survey() for ext in extractors]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        surveys = []
+        surveys: list[dict] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 surveys.append({"source": extractors[i].name, "error": str(result)})
             else:
                 entry: dict = {
@@ -215,9 +215,9 @@ class VaultBuildOrchestrator:
         extractors = self.registry.get_by_names(sources) if sources else self.registry.get_enabled()
         tasks = [ext.preview() for ext in extractors]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        previews = []
+        previews: list[dict] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 previews.append({"source": extractors[i].name, "error": str(result)})
             else:
                 previews.append({

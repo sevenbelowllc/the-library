@@ -7,6 +7,8 @@ import io
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 # ── classify_component ───────────────────────────────────────────────────────
 
@@ -369,6 +371,3 @@ class TestMain:
             main()
 
         mock_print.assert_not_called()
-
-
-import pytest

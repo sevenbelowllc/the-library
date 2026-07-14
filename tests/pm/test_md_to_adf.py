@@ -178,3 +178,72 @@ def test_idempotent_plain_text():
     plain = "no markdown here just words"
     result = md_to_adf(plain)
     assert result["content"][0]["content"][0]["text"] == plain
+
+
+def test_ordered_list_custom_start():
+    result = md_to_adf("3. a\n4. b")
+    ol = result["content"][0]
+    assert ol["type"] == "orderedList"
+    assert ol["attrs"] == {"order": 3}
+
+
+def test_ordered_list_start_one_has_no_order_attr():
+    result = md_to_adf("1. a\n2. b")
+    assert "attrs" not in result["content"][0]
+
+
+def test_heading_inside_list_item_demoted_to_bold_paragraph():
+    # ADF listItem cannot contain heading — it must demote to paragraph + strong.
+    result = md_to_adf("- # Title")
+    children = result["content"][0]["content"][0]["content"]
+    assert children == [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "Title", "marks": [{"type": "strong"}]}],
+        }
+    ]
+
+
+def test_rule_inside_list_item_dropped():
+    # ADF listItem cannot contain rule — it must be dropped, not passed through.
+    result = md_to_adf("- foo\n\n  ***")
+    children = result["content"][0]["content"][0]["content"]
+    assert children == [
+        {"type": "paragraph", "content": [{"type": "text", "text": "foo"}]}
+    ]
+
+
+def test_softbreak_merges_into_previous_unmarked_text_node():
+    # "hello\nworld" must yield exactly two nodes: "hello " (merged space) + "world".
+    result = md_to_adf("hello\nworld")
+    assert result["content"][0]["content"] == [
+        {"type": "text", "text": "hello "},
+        {"type": "text", "text": "world"},
+    ]
+
+
+def test_text_after_link_has_no_marks():
+    # The link mark must close with the link — trailing text carries no marks.
+    result = md_to_adf("see [x](http://a) after")
+    nodes = result["content"][0]["content"]
+    assert nodes[-1] == {"type": "text", "text": " after"}
+
+
+def test_nested_marks_close_innermost_first():
+    # In "**a *b* c**", closing *b* must pop em (not strong): "c" keeps only strong.
+    result = md_to_adf("**a *b* c**")
+    nodes = result["content"][0]["content"]
+    assert nodes == [
+        {"type": "text", "text": "a ", "marks": [{"type": "strong"}]},
+        {"type": "text", "text": "b", "marks": [{"type": "strong"}, {"type": "em"}]},
+        {"type": "text", "text": " c", "marks": [{"type": "strong"}]},
+    ]
+
+
+def test_raw_html_is_treated_as_literal_text():
+    # html is disabled in the parser: tags must survive as literal text,
+    # never be parsed (and silently dropped) as HTML tokens.
+    result = md_to_adf("a <b>x</b> b")
+    assert result["content"][0]["content"] == [
+        {"type": "text", "text": "a <b>x</b> b"}
+    ]

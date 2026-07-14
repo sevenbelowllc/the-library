@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from library_server.state.project_state import parse_project_state, render_project_state
 from library_server.state.session_state import render_session_state
@@ -75,7 +74,7 @@ class TestProcessSessionEnd:
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir(parents=True)
 
-        result = process_session_end(
+        process_session_end(
             reading_room=reading_room,
             sessions_dir=sessions_dir,
             vault_sessions_dir=vault_sessions,
