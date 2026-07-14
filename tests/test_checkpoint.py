@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from library_server.checkpoint.checkpoint import (
     write_checkpoint,

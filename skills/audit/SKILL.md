@@ -18,7 +18,7 @@ The skill that prevents "features claimed complete but actually broken."
 
 ### Step 1: Load Sources
 1. **Specs**: Read files from `specs.path` in config
-2. **Vault**: Call `library:vault:parse` for wiki articles and tags
+2. **Vault**: Call `library_vault_parse` for wiki articles and tags
 3. **Code**: Read project structure, test files, key source files
 
 ### Step 2: Extract Claims
@@ -39,7 +39,7 @@ From code: what ACTUALLY exists (files, functions, tests, routes)
 
 ### Step 4: Dependency Analysis (if Graphify enabled)
 For each broken/missing item:
-- Call `library:graph:query`: "What depends on <item>?"
+- Call `library_graph_query`: "What depends on <item>?"
 - Report cascade impact
 
 ### Step 5: Generate Report
@@ -53,7 +53,7 @@ Output structured gap report:
 
 ### Step 6: Create Tasks (optional)
 Ask: "Create PM tasks for gaps?"
-If yes, call `library:pm:create_task` for each actionable gap.
+If yes, call `library_pm_create_task` for each actionable gap.
 
 ## Subagent Orchestration
 
@@ -85,7 +85,7 @@ If the Agent tool is not available (e.g., non-Claude Code environments), fall ba
 
 ## MCP Tools Used
 
-- `library:vault:parse` — vault state
-- `library:graph:query` — dependency analysis
-- `library:pm:create_task` — create tasks for gaps
-- `library:config:get` — specs path, project keys
+- `library_vault_parse` — vault state
+- `library_graph_query` — dependency analysis
+- `library_pm_create_task` — create tasks for gaps
+- `library_config_get` — specs path, project keys

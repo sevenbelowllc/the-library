@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
-import yaml
 
 from library_server.server import (
     library_config_get,
@@ -120,7 +118,7 @@ class TestCheckpointTools:
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.server.resolve_checkpoint_dir", return_value=Path("/tmp/checkpoints")), \
              patch("library_server.checkpoint.checkpoint.write_checkpoint", return_value={"status": "written"}) as mock_write:
-            result = library_checkpoint_write(
+            library_checkpoint_write(
                 topic="test",
                 status="done",
                 next_session="None",
@@ -149,7 +147,7 @@ class TestCheckpointTools:
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.server.resolve_checkpoint_dir", return_value=Path("/tmp/checkpoints")), \
              patch("library_server.checkpoint.checkpoint.list_checkpoints", return_value={"checkpoints": []}) as mock_list:
-            result = library_checkpoint_list()
+            library_checkpoint_list()
             mock_list.assert_called_once_with("/tmp/checkpoints")
 
     def test_checkpoint_list_custom_path(self):
@@ -181,14 +179,14 @@ class TestMemoryTools:
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.memory.aggregate.aggregate_memories", return_value={"suggestions": []}) as mock_agg:
-            result = library_memory_aggregate()
+            library_memory_aggregate()
             mock_agg.assert_called_once_with("/tmp/memory", True)
 
     def test_memory_prune_default(self):
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.memory.prune.prune_stale", return_value={"pruned_count": 0}) as mock_prune:
-            result = library_memory_prune()
+            library_memory_prune()
             mock_prune.assert_called_once_with("/tmp/memory", 30, True)
 
 
@@ -203,18 +201,18 @@ class TestVaultTools:
             assert result["status"] == "created"
 
     def test_vault_validate(self):
-        with patch("library_server.vault.validate.validate_vault", return_value={"valid": True}) as mock_val:
+        with patch("library_server.vault.validate.validate_vault", return_value={"valid": True}):
             result = library_vault_validate("/tmp/vault")
             assert result["valid"] is True
 
     def test_vault_parse(self):
-        with patch("library_server.vault.parse.parse_vault", return_value={"tags": []}) as mock_parse:
+        with patch("library_server.vault.parse.parse_vault", return_value={"tags": []}):
             result = library_vault_parse("/tmp/vault")
             assert "tags" in result
 
     def test_vault_ingest(self):
         with patch("library_server.vault.ingest.ingest_source", return_value={"status": "ingested"}) as mock_ingest:
-            result = library_vault_ingest("/tmp/vault", "/tmp/source.md", "raw", "specs")
+            library_vault_ingest("/tmp/vault", "/tmp/source.md", "raw", "specs")
             mock_ingest.assert_called_once_with("/tmp/vault", "/tmp/source.md", "raw", "specs")
 
 
@@ -242,7 +240,7 @@ class TestPMTools:
             task_id="PROJ-1", project_key="PROJ", summary="Test", status="To Do", url=""
         )
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
-            result = await library_pm_create_task("PROJ", "Test", "Desc")
+            await library_pm_create_task("PROJ", "Test", "Desc")
             mock_adapter.create_task.assert_called_once_with("PROJ", "Test", "Desc", [], epic_id="")
 
     @pytest.mark.asyncio
@@ -317,7 +315,7 @@ class TestPMTools:
         mock_adapter = AsyncMock()
         mock_adapter.query_tasks.return_value = []
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
-            result = await library_pm_query("PROJ")
+            await library_pm_query("PROJ")
             mock_adapter.query_tasks.assert_called_once_with("PROJ", None)
 
 
@@ -354,7 +352,7 @@ class TestGraphTools:
     def test_graph_rebuild(self):
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
-             patch("library_server.graph.orchestrator.rebuild_graph", return_value={"status": "disabled"}) as mock_rebuild:
+             patch("library_server.graph.orchestrator.rebuild_graph", return_value={"status": "disabled"}):
             result = library_graph_rebuild()
             assert result["status"] == "disabled"
 
@@ -362,7 +360,7 @@ class TestGraphTools:
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.graph.orchestrator.query_graph", return_value={"results": []}) as mock_query:
-            result = library_graph_query("test query")
+            library_graph_query("test query")
             mock_query.assert_called_once_with(
                 query="test query",
                 graph_path="/tmp/graph.json",
@@ -373,7 +371,7 @@ class TestGraphTools:
         mock_cfg = _make_config_mock()
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.graph.orchestrator.trace_path", return_value={"path": []}) as mock_trace:
-            result = library_graph_path("nodeA", "nodeB")
+            library_graph_path("nodeA", "nodeB")
             mock_trace.assert_called_once_with(
                 node_a="nodeA",
                 node_b="nodeB",
@@ -596,3 +594,36 @@ class TestGetVaultOrchestrator:
             orch = _get_vault_orchestrator()
             # Should have registered the 2 configured extractors
             assert len(orch.registry._extractors) == 2
+
+
+# --- _get_pm_adapter caching ---
+
+class TestPMAdapterCache:
+    """The long-lived server must reuse one adapter (and its HTTP connection
+    pool) across tool calls, rebuilding only when pm config changes."""
+
+    def test_same_config_returns_same_adapter(self):
+        section = {"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}}
+        with patch("library_server.server.get_config", return_value=_make_config_mock(section)):
+            first = _get_pm_adapter()
+        with patch("library_server.server.get_config", return_value=_make_config_mock(dict(section))):
+            second = _get_pm_adapter()
+        assert second is first
+
+    def test_changed_config_returns_new_adapter(self):
+        with patch(
+            "library_server.server.get_config",
+            return_value=_make_config_mock(
+                {"pm": {"provider": "jira", "site_url": "https://a.atlassian.net"}}
+            ),
+        ):
+            first = _get_pm_adapter()
+        with patch(
+            "library_server.server.get_config",
+            return_value=_make_config_mock(
+                {"pm": {"provider": "jira", "site_url": "https://b.atlassian.net"}}
+            ),
+        ):
+            second = _get_pm_adapter()
+        assert second is not first
+        assert second.site_url == "https://b.atlassian.net"

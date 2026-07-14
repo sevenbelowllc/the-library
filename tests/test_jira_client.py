@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from library_server.pm.jira_client import JiraApiError, JiraClient
@@ -511,3 +512,169 @@ class TestGetEpicNameFieldId:
         second = await client.get_epic_name_field_id()
         assert first == second == "cf_1"
         client.get_fields.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestRequestTransport — connection reuse + retry/backoff (real httpx layer)
+# ---------------------------------------------------------------------------
+
+def _transport_client(handler) -> JiraClient:
+    """JiraClient wired to an httpx.MockTransport."""
+    return JiraClient(
+        site_url="https://test.atlassian.net",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+@pytest.fixture()
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Patch retry backoff sleep; returns the mock for call assertions."""
+    from library_server.pm import jira_client as mod
+    mock = AsyncMock()
+    monkeypatch.setattr(mod.asyncio, "sleep", mock)
+    return mock
+
+
+class TestConnectionReuse:
+    """_request must reuse one underlying AsyncClient, not open one per call."""
+
+    @pytest.mark.asyncio
+    async def test_same_http_client_across_requests(self, _env_vars):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        await client._request("GET", "/rest/api/3/myself")
+        first_http = client._http
+        await client._request("GET", "/rest/api/3/myself")
+        assert first_http is not None
+        assert client._http is first_http
+
+    @pytest.mark.asyncio
+    async def test_aclose_closes_and_resets(self, _env_vars):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        await client._request("GET", "/rest/api/3/myself")
+        await client.aclose()
+        assert client._http is None
+        # A request after aclose() must transparently open a new client.
+        result = await client._request("GET", "/rest/api/3/myself")
+        assert result == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_closes(self, _env_vars):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"ok": True})
+
+        async with _transport_client(handler) as client:
+            await client._request("GET", "/rest/api/3/myself")
+            assert client._http is not None
+        assert client._http is None
+
+
+class TestRetryBackoff:
+    """429/5xx and transport errors retry with backoff; 4xx does not."""
+
+    @pytest.mark.asyncio
+    async def test_429_retried_until_success(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return httpx.Response(429, json={"errorMessages": ["rate limited"]})
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        result = await client._request("GET", "/rest/api/3/myself")
+        assert result == {"ok": True}
+        assert calls["n"] == 3
+        assert no_sleep.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_after_header_is_honored(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(429, headers={"Retry-After": "7"})
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        await client._request("GET", "/rest/api/3/myself")
+        no_sleep.assert_awaited_once_with(7.0)
+
+    @pytest.mark.asyncio
+    async def test_503_retried(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(503)
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        result = await client._request("GET", "/rest/api/3/myself")
+        assert result == {"ok": True}
+        assert calls["n"] == 2
+
+    @pytest.mark.asyncio
+    async def test_400_not_retried(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(400, json={"errorMessages": ["bad request"]})
+
+        client = _transport_client(handler)
+        with pytest.raises(JiraApiError) as exc_info:
+            await client._request("GET", "/rest/api/3/myself")
+        assert exc_info.value.status_code == 400
+        assert calls["n"] == 1
+        no_sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_persistent_429_exhausts_and_raises(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(429, json={"errorMessages": ["rate limited"]})
+
+        client = _transport_client(handler)
+        with pytest.raises(JiraApiError) as exc_info:
+            await client._request("GET", "/rest/api/3/myself")
+        assert exc_info.value.status_code == 429
+        assert calls["n"] == 3  # initial attempt + 2 retries
+
+    @pytest.mark.asyncio
+    async def test_transport_error_retried_then_succeeds(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ConnectError("connection refused")
+            return httpx.Response(200, json={"ok": True})
+
+        client = _transport_client(handler)
+        result = await client._request("GET", "/rest/api/3/myself")
+        assert result == {"ok": True}
+        assert calls["n"] == 2
+
+    @pytest.mark.asyncio
+    async def test_persistent_transport_error_reraises(self, _env_vars, no_sleep):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ConnectError("connection refused")
+
+        client = _transport_client(handler)
+        with pytest.raises(httpx.ConnectError):
+            await client._request("GET", "/rest/api/3/myself")
+        assert calls["n"] == 3

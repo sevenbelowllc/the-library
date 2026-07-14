@@ -17,7 +17,7 @@ Compile wiki articles from raw vault sources following the Karpathy pattern.
 ## Process
 
 ### Step 1: Load Compile Order
-Call `library:config:get` to get vault path.
+Call `library_config_get` to get vault path.
 Read `kb.yaml` from vault root for compile order and category list.
 
 ### Step 2: For Each Target Article
@@ -52,7 +52,7 @@ related:
 ```
 
 ### Step 4: Rebuild Graph — ALWAYS
-Call `library:graph:rebuild` after every compile. The whole point of compile is to enrich the graph — wiki articles aren't useful until the graph reflects them.
+Call `library_graph_rebuild` after every compile. The whole point of compile is to enrich the graph — wiki articles aren't useful until the graph reflects them.
 
 This goes through the free `build_from_vault()` frontmatter path (no LLM cost). The `graphify.auto_rebuild` config flag gates ingest-triggered rebuilds, NOT the compile path.
 
@@ -97,6 +97,6 @@ If subagents unavailable, process all sources sequentially in main context.
 
 ## MCP Tools Used
 
-- `library:config:get` — vault path
-- `library:vault:parse` — read existing wiki state
-- `library:graph:rebuild` — rebuild graph after compilation
+- `library_config_get` — vault path
+- `library_vault_parse` — read existing wiki state
+- `library_graph_rebuild` — rebuild graph after compilation

@@ -35,6 +35,7 @@ SCOPE_DIR = ROOT / "src" / "library_server" / "pm"
 SCOPED_TESTS = [
     "tests/test_jira_client.py",
     "tests/test_pm_adapter.py",
+    "tests/pm/test_md_to_adf.py",
 ]
 
 
@@ -95,6 +96,10 @@ def _discover_mutations(max_per_file: int | None = None) -> list[Mutation]:
         for i, line in enumerate(lines, start=1):
             # Skip comments / docstring lines.
             if line.lstrip().startswith("#"):
+                continue
+            # Skip lines opted out because every mutant is equivalent
+            # (mutmut convention).
+            if "pragma: no mutate" in line:
                 continue
             per_file.extend(_mutations_for_line(py, i, line))
         if max_per_file is not None:

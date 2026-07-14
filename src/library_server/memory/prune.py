@@ -6,7 +6,6 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import yaml
 
 
 def prune_stale(

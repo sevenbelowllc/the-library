@@ -60,7 +60,7 @@ async def main() -> int:
             print(f"  - {e}")
         return 1
 
-    print(f"== vault build ==")
+    print("== vault build ==")
     print(f"mode:              {vb_cfg.mode}")
     print(f"output_vault:      {vb_cfg.output_vault}")
     print(f"parallel:          {vb_cfg.parallel}")
@@ -74,7 +74,7 @@ async def main() -> int:
     if gate["blocked"]:
         print(f"BLOCKED: {gate['message']}")
         return 1
-    print(f"safety gate:       cleared")
+    print("safety gate:       cleared")
     print()
 
     registry = PluginRegistry()
@@ -95,7 +95,7 @@ async def main() -> int:
         mode=vb_cfg.mode,
     )
 
-    print(f"== executing build ==")
+    print("== executing build ==")
     result = await orch.build(force=False)
     print()
     print(f"status:            {result.status}")

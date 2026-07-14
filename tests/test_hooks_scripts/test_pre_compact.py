@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 
 class TestProcessPreCompact:
@@ -175,7 +174,6 @@ class TestMain:
 
     def test_name_guard_calls_main(self) -> None:
         """Verify the if __name__ == '__main__' guard invokes main()."""
-        import importlib
         import library_server.hooks.scripts.pre_compact as mod
 
         with patch.object(mod, "main") as mock_main:

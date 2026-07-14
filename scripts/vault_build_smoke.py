@@ -73,7 +73,7 @@ async def main() -> int:
 
     raw = output_vault / "raw"
     print()
-    print(f"== raw/ tree:")
+    print("== raw/ tree:")
     for p in sorted(raw.rglob("*")):
         if p.is_file():
             rel = p.relative_to(raw)
@@ -96,7 +96,7 @@ async def main() -> int:
             print(f"== sample frontmatter ({sample.relative_to(raw)}):")
             for k, v in fm.items():
                 print(f"   {k}: {v}")
-            print(f"== body preview:")
+            print("== body preview:")
             print("   " + "\n   ".join(body.splitlines()[:5]))
         else:
             print(f"!! sample {sample}: no frontmatter delimiter found")
@@ -111,7 +111,7 @@ async def main() -> int:
     if missing:
         print(f"!! MISSING: {missing}")
         return 1
-    print(f"== all 5 expected files written: OK")
+    print("== all 5 expected files written: OK")
     return 0
 
 

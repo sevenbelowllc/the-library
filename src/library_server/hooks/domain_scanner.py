@@ -8,7 +8,7 @@ all loaded manifests to produce :class:`DomainMatch` results.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 

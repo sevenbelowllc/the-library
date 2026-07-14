@@ -28,6 +28,7 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+.coverage.*
 coverage.xml
 
 # Claude Code

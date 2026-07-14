@@ -163,9 +163,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
     steps_total += 1
     runtime_created = _ensure_runtime_dirs()
     if runtime_created:
-        print(f"  [done] Runtime directories at ~/.library/")
+        print("  [done] Runtime directories at ~/.library/")
     else:
-        print(f"  [skip] Runtime directories already exist")
+        print("  [skip] Runtime directories already exist")
     steps_ok += 1
 
     # Step 5: Create SESSION.md
@@ -173,10 +173,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
     session_path = Path.home() / ".library" / "sessions" / "SESSION.md"
     if not session_path.exists() or args.force:
         _create_session_md(session_path)
-        print(f"  [done] Created SESSION.md")
+        print("  [done] Created SESSION.md")
         steps_ok += 1
     else:
-        print(f"  [skip] SESSION.md already exists")
+        print("  [skip] SESSION.md already exists")
         steps_ok += 1
 
     # Step 6: Create PROJECT-STATE.md
@@ -185,10 +185,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
     if not ps_path.exists() or args.force:
         project_name = config.get_section("library").get("name", project_dir.name)
         _create_project_state(ps_path, project_name)
-        print(f"  [done] Created PROJECT-STATE.md")
+        print("  [done] Created PROJECT-STATE.md")
         steps_ok += 1
     else:
-        print(f"  [skip] PROJECT-STATE.md already exists")
+        print("  [skip] PROJECT-STATE.md already exists")
         steps_ok += 1
 
     # Step 7: Seed domain manifests from CLAUDE.md
@@ -201,10 +201,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
         if created:
             print(f"  [done] Seeded {len(created)} domain(s): {', '.join(created)}")
         else:
-            print(f"  [skip] Domain manifests already exist or no patterns matched")
+            print("  [skip] Domain manifests already exist or no patterns matched")
         steps_ok += 1
     else:
-        print(f"  [skip] No CLAUDE.md found — skipping domain seeding")
+        print("  [skip] No CLAUDE.md found — skipping domain seeding")
         steps_ok += 1
 
     # Step 8: Install hooks
@@ -213,12 +213,12 @@ def _cmd_init(args: argparse.Namespace) -> None:
         settings_path = project_dir / ".claude" / "settings.json"
         hooks_installed = _install_hooks(settings_path, project_dir)
         if hooks_installed:
-            print(f"  [done] Installed hooks in .claude/settings.json")
+            print("  [done] Installed hooks in .claude/settings.json")
         else:
-            print(f"  [skip] Hooks already installed")
+            print("  [skip] Hooks already installed")
         steps_ok += 1
     else:
-        print(f"  [skip] Hook installation skipped (--skip-hooks)")
+        print("  [skip] Hook installation skipped (--skip-hooks)")
         steps_ok += 1
 
     # Step 9: Create hook wrapper scripts
@@ -228,7 +228,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
     if scripts_created:
         print(f"  [done] Created {scripts_created} hook wrapper script(s)")
     else:
-        print(f"  [skip] Hook wrapper scripts already exist")
+        print("  [skip] Hook wrapper scripts already exist")
     steps_ok += 1
 
     # Step 9b: Inject Project Standards block into CLAUDE.md (LIBRARY-3)
@@ -242,9 +242,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
             if status == "skipped":
                 print(f"  [skip] {msg}")
             elif status == "inserted":
-                print(f"  [done] Injected Project Standards block into CLAUDE.md")
+                print("  [done] Injected Project Standards block into CLAUDE.md")
             elif status == "unchanged":
-                print(f"  [skip] Project Standards block already current")
+                print("  [skip] Project Standards block already current")
             elif status == "user_edited":
                 print(f"  [warn] {msg}")
         except ValueError as e:
@@ -256,9 +256,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
     journal = Path.home() / ".library" / "routing.jsonl"
     if not journal.exists():
         journal.touch()
-        print(f"  [done] Created routing journal")
+        print("  [done] Created routing journal")
     else:
-        print(f"  [skip] Routing journal already exists")
+        print("  [skip] Routing journal already exists")
     steps_ok += 1
 
     # Step 11: Validate
@@ -266,10 +266,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
     config = load_config(config_path)
     result = validate_config(config)
     if result["valid"]:
-        print(f"  [done] Configuration valid")
+        print("  [done] Configuration valid")
         steps_ok += 1
     else:
-        print(f"  [warn] Configuration has warnings:")
+        print("  [warn] Configuration has warnings:")
         for w in result["warnings"]:
             print(f"         - {w}")
         steps_ok += 1
@@ -398,14 +398,14 @@ def _cmd_doctor() -> None:
     session = Path.home() / ".library" / "sessions" / "SESSION.md"
     if not session.is_file():
         _create_session_md(session)
-        print(f"  [fix] Created SESSION.md")
+        print("  [fix] Created SESSION.md")
         fixes += 1
 
     # Fix routing journal
     journal = Path.home() / ".library" / "routing.jsonl"
     if not journal.exists():
         journal.touch()
-        print(f"  [fix] Created routing journal")
+        print("  [fix] Created routing journal")
         fixes += 1
 
     # Fix context usage file
@@ -413,7 +413,7 @@ def _cmd_doctor() -> None:
     if not usage.exists():
         usage.parent.mkdir(parents=True, exist_ok=True)
         usage.write_text("0", encoding="utf-8")
-        print(f"  [fix] Created context usage tracker")
+        print("  [fix] Created context usage tracker")
         fixes += 1
 
     if fixes == 0:
@@ -434,29 +434,29 @@ def _generate_config(
 ) -> str:
     """Generate a starter library-config.yaml."""
     lines = [
-        f'library:',
+        'library:',
         f'  version: "{__version__}"',
-        f'  name: ""  # Your project name',
-        f'',
-        f'reading_room:',
+        '  name: ""  # Your project name',
+        '',
+        'reading_room:',
         f'  path: {reading_room}',
-        f'  type: directory  # "repo" if dedicated git repo, "directory" otherwise',
-        f'',
-        f'vault:',
+        '  type: directory  # "repo" if dedicated git repo, "directory" otherwise',
+        '',
+        'vault:',
         f'  path: {vault}',
-        f'  schema_version: karpathy-v1',
-        f'',
-        f'pm:',
+        '  schema_version: karpathy-v1',
+        '',
+        'pm:',
         f'  provider: {pm_provider}',
     ]
     if pm_provider == "jira":
         lines += [
-            f'  site_url: https://your-site.atlassian.net',
-            f'  projects: []  # e.g. [PROJ1, PROJ2]',
+            '  site_url: https://your-site.atlassian.net',
+            '  projects: []  # e.g. [PROJ1, PROJ2]',
         ]
     elif pm_provider == "linear":
         lines += [
-            f'  teams: []  # e.g. [TEAM1]',
+            '  teams: []  # e.g. [TEAM1]',
         ]
     if standards:
         lines += ['', '# Project standards — surfaced into context by the SessionStart hook.',
@@ -468,15 +468,15 @@ def _generate_config(
             applies = ", ".join(f'"{a}"' for a in s["applies_to"])
             lines.append(f'    applies_to: [{applies}]')
     lines += [
-        f'',
-        f'graphify:',
-        f'  enabled: false',
-        f'',
-        f'# See library-config.example.yaml for all options including:',
-        f'# - vault_builder (source ingestion pipeline)',
-        f'# - memory (budgets, pruning, keyword learning)',
-        f'# - context (warn/checkpoint percentages)',
-        f'# - hooks (enable/disable lifecycle hooks)',
+        '',
+        'graphify:',
+        '  enabled: false',
+        '',
+        '# See library-config.example.yaml for all options including:',
+        '# - vault_builder (source ingestion pipeline)',
+        '# - memory (budgets, pruning, keyword learning)',
+        '# - context (warn/checkpoint percentages)',
+        '# - hooks (enable/disable lifecycle hooks)',
     ]
     return "\n".join(lines) + "\n"
 
@@ -612,7 +612,7 @@ def _ensure_hook_scripts(hooks_dir: Path, project_dir: Path) -> int:
     # If we can't find it locally, the package is pip-installed — use module paths
     use_module = library_dir is None
 
-    scripts = {
+    scripts: dict[str, dict] = {
         "session_start": {
             "defaults": {
                 "reading_room": "os.path.join(PROJECT_DIR, 'library-reading-room')",
@@ -670,7 +670,7 @@ def _ensure_hook_scripts(hooks_dir: Path, project_dir: Path) -> int:
 
         args_line = ' + sys.argv[1:]' if info["pass_args"] else ''
 
-        if use_module:
+        if library_dir is None:
             script_ref = f'"-m", "library_server.hooks.scripts.{script_name}"'
         else:
             lib_rel = _relpath_or_abs(library_dir, project_dir)

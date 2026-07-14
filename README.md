@@ -17,7 +17,7 @@
 
 | Component | What It Is |
 |-----------|-----------|
-| **The Library** | The system — 11 skills + MCP server + config |
+| **The Library** | The system — 12 skills + MCP server + config |
 | **The Reading Room** | Your project's working area — specs, plans, checkpoints, project assets (repo or directory) |
 | **The Vault** | Knowledge base — Obsidian-native (wikilinks, tags), Karpathy 3-layer pattern |
 | **Graphify** | Card catalog — cross-document relationship queries (optional) |
@@ -68,6 +68,7 @@ The Reading Room is where your project's "books" live — canonical specs, imple
 |-------|---------|
 | `library:config` | Setup and configuration |
 | `library:ingest` | Add source material to the vault |
+| `library:build` | Run the vault builder ETL pipeline across all sources |
 | `library:compile` | Compile wiki articles from sources |
 | `library:query` | Ask the Librarian questions |
 | `library:memory` | Memory lifecycle management |
@@ -80,18 +81,19 @@ The Reading Room is where your project's "books" live — canonical specs, imple
 
 ## MCP Server
 
-The Library runs as an MCP server exposing 31 tools across 7 modules:
+The Library runs as an MCP server exposing 36 tools across 8 modules
+(tool names below are the registered MCP names):
 
 | Module | Tools |
 |--------|-------|
-| Config | `library:config:get`, `library:config:set` |
-| Vault | `library:vault:init`, `library:vault:validate`, `library:vault:parse`, `library:vault:ingest` |
-| PM | `library:pm:create_task`, `library:pm:create_epic`, `library:pm:sync`, `library:pm:update`, `library:pm:query`, `library:pm:create_project`, `library:pm:list_projects`, `library:pm:get_project`, `library:pm:update_project`, `library:pm:assign_task`, `library:pm:link_issues`, `library:pm:get_link_types` |
-| Memory | `library:memory:scan`, `library:memory:aggregate`, `library:memory:prune`, `library:memory:health`, `library:memory:learn` |
-| Checkpoint | `library:checkpoint:write`, `library:checkpoint:read`, `library:checkpoint:list` |
-| Graph | `library:graph:rebuild`, `library:graph:query`, `library:graph:path` |
-| Vault Builder | `library:vault_builder:config`, `library:vault_builder:survey`, `library:vault_builder:preview`, `library:vault_builder:build`, `library:vault_builder:extract` |
-| Dev | `library:dev:token_report` |
+| Config | `library_config_get`, `library_config_set` |
+| Vault | `library_vault_init`, `library_vault_validate`, `library_vault_parse`, `library_vault_ingest` |
+| PM | `library_pm_create_task`, `library_pm_create_epic`, `library_pm_sync`, `library_pm_update`, `library_pm_get_issue`, `library_pm_query`, `library_pm_create_project`, `library_pm_list_projects`, `library_pm_get_project`, `library_pm_update_project`, `library_pm_assign_task`, `library_pm_link_issues`, `library_pm_get_link_types` |
+| Memory | `library_memory_scan`, `library_memory_aggregate`, `library_memory_prune`, `library_memory_health`, `library_memory_learn` |
+| Checkpoint | `library_checkpoint_write`, `library_checkpoint_read`, `library_checkpoint_list` |
+| Graph | `library_graph_rebuild`, `library_graph_query`, `library_graph_path` |
+| Vault Builder | `library_vault_builder_config`, `library_vault_builder_survey`, `library_vault_builder_preview`, `library_vault_builder_build`, `library_vault_builder_extract` |
+| Dev | `library_dev_token_report` |
 
 ```bash
 # Initialize (creates config, vault, hooks — everything)
@@ -157,10 +159,6 @@ The MMU is configured automatically during `library init` or `library:config` se
 2. Do you use Jira, Linear, or neither?
 
 Everything else uses smart defaults. Run `/library-config` to customize.
-
-### Spec
-
-Full specification: [MEMORY-MANAGEMENT.md](../library-reading-room/specs/MEMORY-MANAGEMENT.md)
 
 ## License
 
