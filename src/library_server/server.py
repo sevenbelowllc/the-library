@@ -434,7 +434,7 @@ def library_graph_path(node_a: str, node_b: str) -> dict:
 @mcp.tool(name="library_memory_health")
 def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     """Get memory system health report — keyword accuracy, vault stats, CLAUDE.md lines."""
-    from library_server.hooks.config_loader import load_hook_config
+    from library_server.hooks.config_loader import load_hook_config, routing_journal_path
     config = load_hook_config(Path.cwd())
 
     v_path = Path(vault_path) if vault_path else Path(config.get("vault", {}).get("path", "./vault"))
@@ -445,8 +445,7 @@ def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     decision_count = len(list(decisions_dir.glob("*.md"))) if decisions_dir.exists() else 0
     vault_file_count = len(list(v_path.rglob("*.md"))) if v_path.exists() else 0
 
-    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
-    journal_path = learning_dir / "routing-journal.jsonl"
+    journal_path = routing_journal_path()
 
     accuracy_report = {}
     if journal_path.exists():
@@ -465,14 +464,13 @@ def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
 @mcp.tool(name="library_memory_learn")
 def library_memory_learn(vault_path: str = "") -> dict:
     """Analyze routing journal and propose keyword improvements."""
-    from library_server.hooks.config_loader import load_hook_config
+    from library_server.hooks.config_loader import load_hook_config, routing_journal_path
     from library_server.hooks.learning import analyze_routing_accuracy, detect_drift
 
     config = load_hook_config(Path.cwd())
     learning_cfg = config.get("memory", {}).get("keyword_learning", {})
 
-    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
-    journal_path = learning_dir / "routing-journal.jsonl"
+    journal_path = routing_journal_path()
 
     if not journal_path.exists():
         return {"status": "no_data", "message": "No routing journal found. Use The Library for a few sessions first."}

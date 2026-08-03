@@ -137,6 +137,18 @@ class TestLoadHookConfigOverrides:
         assert result["pm"]["provider"] == "jira"
 
 
+class TestRoutingJournalPath:
+    """routing_journal_path() must return the file the hook wrappers write."""
+
+    def test_matches_hook_wrapper_default(self, monkeypatch, tmp_path):
+        """server-side readers must read the exact file the hook wrappers write."""
+        from pathlib import Path
+        from library_server.hooks.config_loader import routing_journal_path
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        assert routing_journal_path() == tmp_path / ".library" / "routing.jsonl"
+
+
 class TestDeepMerge:
     """Unit tests for the _deep_merge helper."""
 

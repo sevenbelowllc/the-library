@@ -412,7 +412,11 @@ class TestMemoryHealthTools:
             assert result["domain_count"] == 1
             assert result["decision_count"] == 1
 
-    def test_memory_learn_no_data(self, tmp_path):
+    def test_memory_learn_no_data(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         config = {
             "memory": {"session_dir": str(tmp_path / "sessions"), "keyword_learning": {}},
         }
@@ -420,21 +424,44 @@ class TestMemoryHealthTools:
             result = library_memory_learn()
             assert result["status"] == "no_data"
 
-    def test_memory_learn_with_journal(self, tmp_path):
-        sessions = tmp_path / "sessions"
-        learning = sessions.parent / "learning"
-        learning.mkdir(parents=True)
-        journal = learning / "routing-journal.jsonl"
+    def test_memory_learn_with_journal(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        journal = tmp_path / ".library" / "routing.jsonl"
+        journal.parent.mkdir(parents=True)
         journal.write_text('{"keyword": "test", "routed": true}\n')
 
         config = {
-            "memory": {"session_dir": str(sessions), "keyword_learning": {}},
+            "memory": {"session_dir": str(tmp_path / "sessions"), "keyword_learning": {}},
         }
         with patch("library_server.hooks.config_loader.load_hook_config", return_value=config), \
              patch("library_server.hooks.learning.analyze_routing_accuracy", return_value={"accuracy": 0.9}), \
              patch("library_server.hooks.learning.detect_drift", return_value=[]):
             result = library_memory_learn()
             assert result["status"] == "analyzed"
+
+    def test_memory_learn_reads_hook_journal_path(self, monkeypatch, tmp_path):
+        """Regression: server must read ~/.library/routing.jsonl (what hooks write),
+        not ~/.library/learning/routing-journal.jsonl (which nothing writes)."""
+        import json
+        from pathlib import Path
+        from library_server.server import library_memory_learn
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)  # no library-config.yaml -> defaults
+        journal = tmp_path / ".library" / "routing.jsonl"
+        journal.parent.mkdir(parents=True)
+        entry = {
+            "timestamp": "2026-08-02T00:00:00Z", "session_id": "s1", "prompt_keywords": ["auth"],
+            "matched_domain": "auth", "match_type": "keyword", "outcome": "hit",
+            "outcome_signal": "test", "injection_tokens": 100, "prompt_hash": "abc123",
+        }
+        journal.write_text("\n".join([json.dumps(entry)] * 12) + "\n")
+
+        result = library_memory_learn()
+        assert result["status"] == "analyzed"
 
 
 # --- Vault Builder tools ---

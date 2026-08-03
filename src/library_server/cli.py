@@ -104,6 +104,7 @@ def main() -> None:
 
 def _cmd_init(args: argparse.Namespace) -> None:
     """Initialize The Library for a project."""
+    from library_server.hooks.config_loader import routing_journal_path
     project_dir = args.project_dir.resolve()
     print(f"Initializing The Library v{__version__} in {project_dir}\n")
 
@@ -253,8 +254,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
     # Step 10: Initialize routing journal
     steps_total += 1
-    journal = Path.home() / ".library" / "routing.jsonl"
+    journal = routing_journal_path()
     if not journal.exists():
+        journal.parent.mkdir(parents=True, exist_ok=True)
         journal.touch()
         print("  [done] Created routing journal")
     else:
@@ -382,6 +384,7 @@ def _cmd_validate() -> None:
 
 def _cmd_doctor() -> None:
     """Diagnose and fix common installation issues."""
+    from library_server.hooks.config_loader import routing_journal_path
     print(f"The Library v{__version__} — Doctor\n")
 
     fixes = 0
@@ -402,8 +405,9 @@ def _cmd_doctor() -> None:
         fixes += 1
 
     # Fix routing journal
-    journal = Path.home() / ".library" / "routing.jsonl"
+    journal = routing_journal_path()
     if not journal.exists():
+        journal.parent.mkdir(parents=True, exist_ok=True)
         journal.touch()
         print("  [fix] Created routing journal")
         fixes += 1
