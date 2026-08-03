@@ -4,6 +4,34 @@ All notable changes to The Library are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-08-02
+
+### Added
+- `library_pm_autodetect_workflow` MCP tool — derives a `pm.workflow` block from a live Jira project's statuses (wires the previously uncalled `autodetect_jira_workflow`). Tool count is now 37.
+- `library_checkpoint_write` accepts `changes`, `open_decisions` ("question|options|impact"), and `memory_updates` ("file|type|content") — the renderer supported these sections but the tool could never populate them.
+- `library doctor` now repairs hook registration in `.claude/settings.json` and rewrites hook wrapper scripts — everything `library validate` flags, `doctor` can fix.
+- Vault builder honors `parallel`, `max_parallel_extractors`, and `fail_fast`.
+- `pm.workflow.blocked` is validated and documented.
+- `library-config.example.yaml` documents the `vault_builder` section.
+
+### Fixed
+- `library init` wrote SESSION.md/PROJECT-STATE.md in a bullet format the state parsers could not read; the first session-end round-trip blanked project/focus/task. Bootstrap now uses the canonical renderers.
+- `library_memory_health`/`library_memory_learn` read `~/.library/learning/routing-journal.jsonl` while hooks write `~/.library/routing.jsonl`; both now use the shared `routing_journal_path()` helper.
+- PreCompact transcript archival and SessionEnd SESSION.md archival bypassed redaction (raw file copies into the vault); both now redact at write time. `session_end` stderr uses `redact_exception`.
+- Linear `update_task(status=...)` silently ignored the status; it now raises `TransitionNotAvailableError` (real Linear transitions remain unimplemented).
+- Jira vault-builder extractor dumped ADF description/comment dicts as Python reprs; ADF is now flattened to text via the shared `pm/adf.py` helper.
+- `library_vault_builder_extract` bypassed the create-mode safety gate; it now applies the same gate as full builds and accepts `force`.
+- `library_pm_create_project` dropped its `project_type_key` parameter; it is now threaded through to Jira.
+- `aggregate_memories` claimed `applied: true` without performing any merge; it now always reports `applied: false` (analysis only).
+
+### Changed
+- Removed the inert `vault_builder.preserve` config key (deferred to the incrementality push) and the out-of-domain `bin/library-clerk-pollution-scan` tooling.
+- Docs: added `library_pm_get_issue` to the MCP tool reference and Linear capability docs; corrected CONTRIBUTING's stale colon-form tool naming; corrected the test plan's stale coverage-floor description (the ratchet against `coverage-baseline.txt` is the only floor).
+
+### Performance (previously unreleased, mid-2026 merges)
+- JiraClient: HTTP connection reuse plus retry/backoff on 429/502/503/504 honoring `Retry-After`; config loading cached on `(mtime_ns, size)`.
+- Stop hook emits `systemMessage` instead of `hookSpecificOutput` (Stop event schema fix).
+
 ## [0.3.1] - 2026-04-17
 
 ### Added

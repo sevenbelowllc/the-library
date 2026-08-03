@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "library",
-      "description": "Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
+      "description": "Session continuity, knowledge management, vault builder, and PM tracking via 12 skills backed by an MCP server with 37 tools.",
       "source": "./",
       "homepage": "https://github.com/sevenbelowllc/the-library",
       "category": "productivity",
@@ -18,7 +18,7 @@
         "email": "dev@sevenbelow.com"
       },
       "tags": ["mcp", "knowledge-management", "project-management", "obsidian", "graphify", "jira"],
-      "version": "0.3.0"
+      "version": "0.3.2"
     }
   ]
 }

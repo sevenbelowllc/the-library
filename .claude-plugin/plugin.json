@@ -1,7 +1,7 @@
 {
   "name": "library",
-  "version": "0.3.0",
-  "description": "Meta-system for AI-assisted project management. Session continuity, knowledge management, vault builder, and PM tracking via 11 skills backed by an MCP server with 27 tools.",
+  "version": "0.3.2",
+  "description": "Meta-system for AI-assisted project management. Session continuity, knowledge management, vault builder, and PM tracking via 12 skills backed by an MCP server with 37 tools.",
   "author": {
     "name": "SevenBelow LLC",
     "email": "dev@sevenbelow.com"
