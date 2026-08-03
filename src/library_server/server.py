@@ -126,7 +126,8 @@ def library_memory_scan(memory_path: str = "", stale_threshold_days: int = 30) -
 
 @mcp.tool(name="library_memory_aggregate")
 def library_memory_aggregate(memory_path: str = "", dry_run: bool = True) -> dict:
-    """Find merge opportunities for related memories. Set dry_run=False to apply."""
+    """Find merge opportunities for related memories. Analysis only — returns
+    suggestions; no files are modified regardless of dry_run."""
     from library_server.memory.aggregate import aggregate_memories
     path = memory_path or get_config().get_section("memory").get("path", "./.library/memory")
     return aggregate_memories(path, dry_run)

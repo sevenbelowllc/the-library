@@ -269,7 +269,7 @@ def test_aggregate_different_types_not_merged(tmp_path: Path):
 
 
 def test_aggregate_applied_flag(tmp_path: Path):
-    """aggregate with dry_run=False and suggestions should set applied=True."""
+    """aggregate always reports applied=False — it only analyzes, never merges."""
     mem = tmp_path / "memory"
     mem.mkdir()
     (mem / "MEMORY.md").write_text("")
@@ -281,4 +281,23 @@ def test_aggregate_applied_flag(tmp_path: Path):
     )
 
     result = aggregate_memories(str(mem), dry_run=False)
-    assert result["applied"] is True
+    assert result["applied"] is False
+
+
+def test_aggregate_never_claims_applied(tmp_path: Path):
+    """Regression: dry_run=False used to report applied=True with no merge performed."""
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    (mem / "MEMORY.md").write_text("")
+
+    for name in ("auth-flow", "auth-flow-notes"):
+        (mem / f"{name}.md").write_text(
+            f"---\nname: {name}\ndescription: d\ntype: project\n---\nbody\n"
+        )
+    before = sorted(p.name for p in mem.glob("*.md"))
+
+    result = aggregate_memories(str(mem), dry_run=False)
+
+    assert result["suggestions"], "related files should still be suggested"
+    assert result["applied"] is False
+    assert sorted(p.name for p in mem.glob("*.md")) == before  # nothing touched
