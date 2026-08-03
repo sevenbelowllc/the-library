@@ -12,12 +12,13 @@ def aggregate_memories(memory_path: str, dry_run: bool = True) -> dict:
     """Analyze memory files for merge opportunities.
 
     Groups memories by type, then checks for overlapping names/descriptions.
-    With dry_run=True, returns suggestions without modifying files.
+    Analysis only — no files are modified. The dry_run flag is accepted for
+    backward compatibility but has no effect.
 
     Returns:
         {
             "suggestions": [{"action": "merge", "files": [...], "reason": str}, ...],
-            "applied": bool,
+            "applied": always False — analysis only; merging is not implemented.
         }
     """
     path = Path(memory_path)
@@ -51,7 +52,10 @@ def aggregate_memories(memory_path: str, dry_run: bool = True) -> dict:
                                   f"'{b['frontmatter'].get('name', '')}'",
                     })
 
-    return {"suggestions": suggestions, "applied": not dry_run and len(suggestions) > 0}
+    # Merging is not implemented — this function only analyzes. Reporting
+    # applied=True on dry_run=False was a lie that made callers believe
+    # files had been consolidated.
+    return {"suggestions": suggestions, "applied": False}
 
 
 def _are_related(a: dict, b: dict) -> bool:
