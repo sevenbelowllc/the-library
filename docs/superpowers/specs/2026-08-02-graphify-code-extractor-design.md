@@ -77,13 +77,30 @@ existing vaults keep their layout).
      - `repos/<name>/repo-summary.md` — counts now node/edge/community totals.
      - `repos/<name>/communities/<slug>.md` — community name, cohesion, member
        symbols with file paths.
-- **Removal**: delete `extractors/axon_bridge.py` + its tests; remove
-  `axon_bridge` from `server._get_vault_orchestrator()` `extractor_map` and
-  register `code_repo`; remove the `axon:` config handling from
-  `vault_builder/config.py` (`validate_vault_builder_config`'s axon CLI check
-  included); purge axon from docs (`vault-builder.md`, `vault-builder-api.md`,
-  example yaml section added in v0.3.2, README mentions) and from the pyproject
-  comment block.
+- **Removal** (complete touchpoint list, verified by repo sweep 2026-08-02):
+  - `extractors/axon_bridge.py` + `tests/vault_builder/extractors/test_axon_bridge.py`.
+  - `server._get_vault_orchestrator()`: swap `axon_bridge` → `code_repo` in
+    `extractor_map`.
+  - `server.py` `library_vault_builder_config`: drop the `axon_enabled` field
+    from the tool's return dict (minor API-shape change; the `sources` list
+    already conveys which extractors are configured).
+  - `vault_builder/config.py`: remove the `axon` dataclass field, its loader
+    kwarg, and `validate_vault_builder_config`'s axon CLI check.
+  - `skills/build/SKILL.md` (frontmatter description, valid-sources list,
+    "Axon CLI available" prerequisite) and `docs/guides/skills-reference.md`:
+    `axon_bridge` → `code_repo`; drop the CLI prerequisite.
+  - Docs: `docs/guides/vault-builder.md` (extractor table, axon config block,
+    "Axon CLI not found" troubleshooting), `docs/reference/vault-builder-api.md`
+    (config dataclass listing, extractor registry table, prerequisite bullet),
+    `docs/reference/mcp-tools.md` (`library_vault_builder_config` return shape),
+    the example-yaml section added in v0.3.2, README mentions.
+  - `pyproject.toml` comment block about the `axon` extra (lines ~32-35).
+- **Requirements delta**: the "Axon CLI on `$PATH`" install prerequisite
+  disappears — code-repo analysis becomes purely pip-installable via the
+  existing `graphify` extra. No other requirement changes: the vault contract
+  (output subdir `repos/`, frontmatter fields, trust 1.0, domain heuristic) and
+  every downstream consumer (Graphify `build_from_vault`, `.obsidian` color
+  groups keyed on `raw/repos/`, `library_graph_*` query tools) are unchanged.
 - **Migration**: a config still naming `sources.axon_bridge` gets a clear
   validation error naming the rename (`axon_bridge` → `code_repo`), not a silent
   ignore (an absent/unknown source block currently just never registers — that
