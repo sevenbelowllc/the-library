@@ -420,6 +420,17 @@ def _cmd_doctor() -> None:
         print("  [fix] Created context usage tracker")
         fixes += 1
 
+    # Fix hook registration + wrapper scripts (what `validate` flags)
+    project_dir = Path.cwd()
+    settings_path = project_dir / ".claude" / "settings.json"
+    if _install_hooks(settings_path, project_dir):
+        print("  [fix] Registered hooks in .claude/settings.json")
+        fixes += 1
+    wrappers_written = _ensure_hook_scripts(project_dir / ".claude" / "hooks", project_dir)
+    if wrappers_written:
+        print(f"  [fix] Wrote {wrappers_written} hook wrapper script(s)")
+        fixes += wrappers_written
+
     if fixes == 0:
         print("  No issues found. Everything looks good.")
     else:
@@ -648,8 +659,6 @@ def _ensure_hook_scripts(hooks_dir: Path, project_dir: Path) -> int:
 
     for script_name, info in scripts.items():
         script_path = hooks_dir / f"{script_name}.py"
-        if script_path.exists() and not True:  # always overwrite hook wrappers
-            continue
 
         defaults_lines = []
         for key, val in info["defaults"].items():
@@ -725,6 +734,9 @@ result = subprocess.run([sys.executable, SCRIPT]{args_line}, input=augmented, ca
 sys.stdout.buffer.write(result.stdout)
 sys.exit(result.returncode)
 '''
+
+        if script_path.exists() and script_path.read_text() == content:
+            continue  # unchanged — don't count as created/fixed
 
         script_path.write_text(content, encoding="utf-8")
         script_path.chmod(0o755)
