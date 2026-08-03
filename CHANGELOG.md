@@ -27,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 ### Changed
 - Removed the inert `vault_builder.preserve` config key (deferred to the incrementality push) and the out-of-domain `bin/library-clerk-pollution-scan` tooling.
 - Docs: added `library_pm_get_issue` to the MCP tool reference and Linear capability docs; corrected CONTRIBUTING's stale colon-form tool naming; corrected the test plan's stale coverage-floor description (the ratchet against `coverage-baseline.txt` is the only floor).
+- CI: capped `mcp[cli]<2` (2.x drops `mcp.server.fastmcp`) and pinned ruff to `>=0.6,<0.16` in dev deps and the lint job — unpinned installs had let CI drift red since April independent of code changes.
 
 ### Performance (previously unreleased, mid-2026 merges)
 - JiraClient: HTTP connection reuse plus retry/backoff on 429/502/503/504 honoring `Retry-After`; config loading cached on `(mtime_ns, size)`.
