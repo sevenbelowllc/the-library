@@ -169,8 +169,6 @@ vault_builder:
   graphify:
     enabled: true
     command: graphify          # Path to graphify binary
-    flags: ["--obsidian", "--wiki"]
-    incremental: true          # Reuse cached results when possible
 
   # Axon CLI settings (used by axon_bridge extractor)
   axon:
@@ -195,10 +193,8 @@ vault_builder:
 
     jira:
       enabled: true
-      instance: yoursite.atlassian.net
-      cloud_id: your-cloud-id
+      instance: yoursite.atlassian.net   # auth via ATLASSIAN_EMAIL + JIRA_API_TOKEN env vars
       projects: [COS, PLT, SEC]
-      auth: mcp                # Authentication via MCP Jira tools
 
     specs:
       enabled: true

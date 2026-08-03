@@ -235,6 +235,37 @@ class TestProcessSessionEnd:
         assert "disk full" in captured.err
 
 
+class TestSessionEndRedaction:
+    def test_archived_session_md_is_redacted(self, tmp_path: Path) -> None:
+        from library_server.hooks.scripts.session_end import process_session_end
+
+        reading_room = tmp_path / "rr"
+        reading_room.mkdir()
+        # Assembled at runtime — see Task 3's note on gitleaks-safe fixtures.
+        secret = "ATATT3" + "xFfGF0" + "a" * 50
+        (reading_room / "SESSION.md").write_text(
+            "---\nsession_id: s1\nstarted: 2026-08-02T00:00:00Z\n---\n\n"
+            "## Current\n\n"
+            f"**Task:** debug auth with token {secret}\n"
+            "**Doing:** \n**Branch:** main\n"
+        )
+        dest_dir = tmp_path / "vault" / "sessions"
+
+        result = process_session_end(
+            reading_room=reading_room,
+            sessions_dir=tmp_path,
+            vault_sessions_dir=dest_dir,
+            session_id="s1",
+        )
+
+        assert result["archived"] is True
+        archived_files = list(dest_dir.glob("*-s1-session.md"))
+        assert len(archived_files) == 1
+        content = archived_files[0].read_text()
+        assert secret not in content
+        assert "[REDACTED" in content
+
+
 class TestMain:
     def test_main_with_valid_payload(self, tmp_path: Path) -> None:
         """main() reads stdin JSON and calls process_session_end."""

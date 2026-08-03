@@ -260,8 +260,10 @@ class VaultBuilderConfig:
     sources: dict[str, dict[str, Any]]  # Per-extractor config dicts
     graphify: dict[str, Any]            # Graphify post-processing config
     axon: dict[str, Any]                # Axon bridge config
-    preserve: list[str]                 # Paths to preserve across builds
 ```
+
+`parallel`, `max_parallel_extractors`, and `fail_fast` are enforced by
+`VaultBuildOrchestrator` at build time, not just read and ignored.
 
 ### YAML Schema
 
@@ -272,8 +274,6 @@ vault_builder:
   parallel: true
   max_parallel_extractors: 8
   fail_fast: false
-  preserve:
-    - wiki/              # Directories to keep across rebuilds
 
   sources:
     specs:
@@ -304,7 +304,6 @@ vault_builder:
     enabled: true
     command: graphify
     mode: deep
-    auto_rebuild: true
 
   axon:
     enabled: false
@@ -325,7 +324,7 @@ vault_builder:
 
 ## Built-in Extractors
 
-Registered in `server.py` lines 489-530:
+Registered in `server.py::_get_vault_orchestrator`:
 
 | Name | Class | Output Subdir | Description |
 |------|-------|---------------|-------------|

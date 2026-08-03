@@ -51,20 +51,41 @@ def library_checkpoint_write(
     accomplished: str = "",
     next_actions: str = "",
     key_context: str = "",
+    changes: str = "",
+    open_decisions: str = "",
+    memory_updates: str = "",
 ) -> dict:
-    """Write a session checkpoint. Lists are semicolon-separated strings."""
+    """Write a session checkpoint. List params are semicolon-separated strings.
+
+    Structured params use pipe-separated fields within each semicolon-separated
+    entry: open_decisions entries are "question|options|impact";
+    memory_updates entries are "file|type|content".
+    """
     from library_server.checkpoint.checkpoint import write_checkpoint
     from library_server.types import CheckpointData
     from datetime import date
+
+    def _split(raw: str) -> list[str]:
+        return [s.strip() for s in raw.split(";") if s.strip()] if raw else []
+
+    def _split_records(raw: str, keys: tuple[str, ...]) -> list[dict]:
+        records = []
+        for entry in _split(raw):
+            parts = [p.strip() for p in entry.split("|")]
+            records.append({k: (parts[i] if i < len(parts) else "") for i, k in enumerate(keys)})
+        return records
 
     data = CheckpointData(
         topic=topic,
         date=date.today().isoformat(),
         status=status,
         next_session=next_session,
-        accomplished=[s.strip() for s in accomplished.split(";") if s.strip()] if accomplished else [],
-        next_actions=[s.strip() for s in next_actions.split(";") if s.strip()] if next_actions else [],
-        key_context=[s.strip() for s in key_context.split(";") if s.strip()] if key_context else [],
+        accomplished=_split(accomplished),
+        changes=_split(changes),
+        next_actions=_split(next_actions),
+        open_decisions=_split_records(open_decisions, ("question", "options", "impact")),
+        key_context=_split(key_context),
+        memory_updates=_split_records(memory_updates, ("file", "type", "content")),
     )
     try:
         checkpoint_dir = resolve_checkpoint_dir(get_config())
@@ -105,7 +126,8 @@ def library_memory_scan(memory_path: str = "", stale_threshold_days: int = 30) -
 
 @mcp.tool(name="library_memory_aggregate")
 def library_memory_aggregate(memory_path: str = "", dry_run: bool = True) -> dict:
-    """Find merge opportunities for related memories. Set dry_run=False to apply."""
+    """Find merge opportunities for related memories. Analysis only — returns
+    suggestions; no files are modified regardless of dry_run."""
     from library_server.memory.aggregate import aggregate_memories
     path = memory_path or get_config().get_section("memory").get("path", "./.library/memory")
     return aggregate_memories(path, dry_run)
@@ -271,7 +293,11 @@ async def library_pm_create_project(
     actual_scheme = workflow_scheme if workflow_scheme else default_scheme
 
     adapter = _get_pm_adapter()
-    result = await adapter.create_project(name, key, description, workflow_scheme=actual_scheme)
+    result = await adapter.create_project(
+        name, key, description,
+        workflow_scheme=actual_scheme,
+        project_type_key=project_type_key,
+    )
     return {"project_key": result.project_key, "name": result.name, "url": result.url}
 
 
@@ -334,6 +360,28 @@ async def library_pm_get_link_types() -> dict:
     adapter = _get_pm_adapter()
     types = await adapter.get_link_types()
     return {"types": types}
+
+
+@mcp.tool(name="library_pm_autodetect_workflow")
+async def library_pm_autodetect_workflow(project_key: str) -> dict:
+    """Detect a pm.workflow block from a live Jira project's statuses.
+
+    Returns {states, in_progress, in_review, closed} derived from
+    GET /project/{key}/statuses. Review the proposal, then persist it by
+    editing the pm.workflow section of library-config.yaml. Jira only.
+    """
+    from library_server.config import autodetect_jira_workflow
+
+    adapter = _get_pm_adapter()
+    client = getattr(adapter, "client", None)
+    if client is None:
+        return {"status": "error", "error": "Workflow autodetection requires pm.provider=jira."}
+    statuses = await client.get_project_statuses(project_key)
+    try:
+        workflow = autodetect_jira_workflow(statuses)
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+    return {"status": "detected", "project_key": project_key, "workflow": workflow}
 
 
 # Cache the adapter across tool calls so its JiraClient keeps one HTTP
@@ -434,7 +482,7 @@ def library_graph_path(node_a: str, node_b: str) -> dict:
 @mcp.tool(name="library_memory_health")
 def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     """Get memory system health report — keyword accuracy, vault stats, CLAUDE.md lines."""
-    from library_server.hooks.config_loader import load_hook_config
+    from library_server.hooks.config_loader import load_hook_config, routing_journal_path
     config = load_hook_config(Path.cwd())
 
     v_path = Path(vault_path) if vault_path else Path(config.get("vault", {}).get("path", "./vault"))
@@ -445,8 +493,7 @@ def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
     decision_count = len(list(decisions_dir.glob("*.md"))) if decisions_dir.exists() else 0
     vault_file_count = len(list(v_path.rglob("*.md"))) if v_path.exists() else 0
 
-    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
-    journal_path = learning_dir / "routing-journal.jsonl"
+    journal_path = routing_journal_path()
 
     accuracy_report = {}
     if journal_path.exists():
@@ -465,14 +512,13 @@ def library_memory_health(memory_path: str = "", vault_path: str = "") -> dict:
 @mcp.tool(name="library_memory_learn")
 def library_memory_learn(vault_path: str = "") -> dict:
     """Analyze routing journal and propose keyword improvements."""
-    from library_server.hooks.config_loader import load_hook_config
+    from library_server.hooks.config_loader import load_hook_config, routing_journal_path
     from library_server.hooks.learning import analyze_routing_accuracy, detect_drift
 
     config = load_hook_config(Path.cwd())
     learning_cfg = config.get("memory", {}).get("keyword_learning", {})
 
-    learning_dir = Path(config.get("memory", {}).get("session_dir", "~/.library/sessions")).expanduser().parent / "learning"
-    journal_path = learning_dir / "routing-journal.jsonl"
+    journal_path = routing_journal_path()
 
     if not journal_path.exists():
         return {"status": "no_data", "message": "No routing journal found. Use The Library for a few sessions first."}
@@ -566,13 +612,25 @@ async def library_vault_builder_build(sources: str = "", force: bool = False) ->
 
 
 @mcp.tool(name="library_vault_builder_extract")
-async def library_vault_builder_extract(extractor: str, dry_run: bool = False) -> dict:
-    """Run a single extractor by name. Set dry_run=True for preview only."""
+async def library_vault_builder_extract(extractor: str, dry_run: bool = False, force: bool = False) -> dict:
+    """Run a single extractor by name. Set dry_run=True for preview only.
+
+    Applies the same create-mode safety gate as library_vault_builder_build;
+    pass force=True to overwrite an existing vault.
+    """
     orch = _get_vault_orchestrator()
     if dry_run:
         previews = await orch.preview([extractor])
         return {"mode": "preview", "sources": previews}
-    result = await orch.build([extractor])
+
+    if orch.output_vault:
+        from library_server.vault_builder.orchestrator import detect_vault_state, check_safety_gate
+        vault_state = detect_vault_state(orch.output_vault)
+        gate = check_safety_gate(orch.mode, vault_state, force)
+        if gate["blocked"]:
+            return {"status": "blocked", "message": gate["message"]}
+
+    result = await orch.build([extractor], force)
     return {
         "status": result.status,
         "extract_results": [
@@ -623,6 +681,9 @@ def _get_vault_orchestrator():
         graphify_runner=graphify,
         output_vault=vb_cfg.output_vault or Path.cwd() / "vault-output",
         mode=vb_cfg.mode,
+        parallel=vb_cfg.parallel,
+        max_parallel_extractors=vb_cfg.max_parallel_extractors,
+        fail_fast=vb_cfg.fail_fast,
     )
 
 

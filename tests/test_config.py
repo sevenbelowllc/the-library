@@ -324,6 +324,39 @@ def test_validate_pm_workflow_named_key_not_in_states(tmp_path: Path):
     assert any("pm.workflow.in_progress" in w for w in result["warnings"])
 
 
+def test_validate_warns_on_blocked_not_in_states(tmp_path):
+    from library_server.config import LibraryConfig, validate_config
+
+    config = LibraryConfig(raw={
+        "library": {"version": "0.3.2"},
+        "pm": {"provider": "jira", "workflow": {
+            "states": ["To Do", "In Progress", "In Review", "Done"],
+            "in_progress": "In Progress", "in_review": "In Review",
+            "closed": "Done", "blocked": "Stuck",
+        }},
+    }, path=tmp_path / "library-config.yaml")
+
+    result = validate_config(config)
+
+    assert any("blocked" in w and "Stuck" in w for w in result["warnings"])
+
+
+def test_validate_blocked_unset_is_fine(tmp_path):
+    from library_server.config import LibraryConfig, validate_config
+
+    config = LibraryConfig(raw={
+        "library": {"version": "0.3.2"},
+        "pm": {"provider": "jira", "workflow": {
+            "states": ["To Do", "Done"],
+            "in_progress": "To Do", "in_review": "To Do", "closed": "Done",
+        }},
+    }, path=tmp_path / "library-config.yaml")
+
+    result = validate_config(config)
+
+    assert not any("blocked" in w for w in result["warnings"])
+
+
 # ---------------------------------------------------------------------------
 # load_config caching
 # ---------------------------------------------------------------------------

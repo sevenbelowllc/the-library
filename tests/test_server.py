@@ -22,6 +22,7 @@ from library_server.server import (
     library_vault_ingest,
     library_pm_create_task,
     library_pm_create_epic,
+    library_pm_create_project,
     library_pm_sync,
     library_pm_update,
     library_pm_query,
@@ -154,6 +155,30 @@ class TestCheckpointTools:
         with patch("library_server.checkpoint.checkpoint.list_checkpoints", return_value={"checkpoints": []}) as mock_list:
             library_checkpoint_list("/custom/path")
             mock_list.assert_called_once_with("/custom/path")
+
+    def test_checkpoint_write_renders_changes_decisions_memory(self, monkeypatch, tmp_path):
+        rr = tmp_path / "rr"
+        (rr / "checkpoints").mkdir(parents=True)
+        monkeypatch.setattr(
+            "library_server.server.resolve_checkpoint_dir", lambda cfg: rr / "checkpoints"
+        )
+
+        result = library_checkpoint_write(
+            topic="pipeline",
+            status="in progress",
+            next_session="continue",
+            changes="Added retry logic; Removed dead code",
+            open_decisions="Use Redis?|redis,memcached|caching layer",
+            memory_updates="auth-notes.md|project|JWT rotation policy",
+        )
+
+        content = Path(result["path"]).read_text()
+        assert "## 2. What Changed" in content
+        assert "Added retry logic" in content
+        assert "## 4. Open Decisions" in content
+        assert "Use Redis?" in content
+        assert "## 6. Memory Updates" in content
+        assert "auth-notes.md" in content
 
 
 # --- Memory tools ---
@@ -318,12 +343,77 @@ class TestPMTools:
             await library_pm_query("PROJ")
             mock_adapter.query_tasks.assert_called_once_with("PROJ", None)
 
+    @pytest.mark.asyncio
+    async def test_pm_create_project_forwards_project_type_key(self, monkeypatch):
+        """library_pm_create_project should forward project_type_key to the adapter."""
+        adapter = AsyncMock()
+        adapter.create_project = AsyncMock(
+            return_value=MagicMock(project_key="OPS", name="Ops", url="")
+        )
+
+        # Mock get_config to avoid needing a real config file
+        mock_cfg = _make_config_mock()
+        with patch("library_server.server.get_config", return_value=mock_cfg):
+            with patch("library_server.server._get_pm_adapter", return_value=adapter):
+                await library_pm_create_project(name="Ops", key="OPS", project_type_key="business")
+
+        _, kwargs = adapter.create_project.call_args
+        assert kwargs["project_type_key"] == "business"
+
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow(self, monkeypatch):
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock()
+        adapter.client.get_project_statuses = AsyncMock(return_value=[
+            {"name": "Task", "statuses": [
+                {"name": "To Do"}, {"name": "In Progress"},
+                {"name": "In Review"}, {"name": "Done"},
+            ]}
+        ])
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "detected"
+        assert result["workflow"]["closed"] == "Done"
+        assert result["workflow"]["in_progress"] == "In Progress"
+        assert result["workflow"]["states"] == ["To Do", "In Progress", "In Review", "Done"]
+
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow_requires_jira(self, monkeypatch):
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock(spec=[])  # no .client attribute — Linear-shaped
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow_no_statuses_returns_error(self, monkeypatch):
+        """When Jira returns no statuses, autodetect_jira_workflow raises ValueError —
+        the tool must surface that as a structured error, not an unhandled exception."""
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock()
+        adapter.client.get_project_statuses = AsyncMock(return_value=[])
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "error"
+        assert "statuses" in result["error"].lower()
+
 
 # --- _get_pm_adapter factory ---
 
 class TestGetPMAdapter:
 
-    def test_jira_adapter(self):
+    def test_jira_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         mock_cfg = _make_config_mock({"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}})
         with patch("library_server.server.get_config", return_value=mock_cfg):
             adapter = _get_pm_adapter()
@@ -384,7 +474,11 @@ class TestGraphTools:
 
 class TestMemoryHealthTools:
 
-    def test_memory_health_no_journal(self, tmp_path):
+    def test_memory_health_no_journal(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         config = {
             "vault": {"path": str(tmp_path / "vault")},
             "memory": {"session_dir": str(tmp_path / "sessions")},
@@ -394,7 +488,11 @@ class TestMemoryHealthTools:
             assert result["status"] == "healthy"
             assert result["vault_file_count"] == 0
 
-    def test_memory_health_with_vault(self, tmp_path):
+    def test_memory_health_with_vault(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         vault = tmp_path / "vault"
         domains = vault / "domains"
         decisions = vault / "decisions"
@@ -412,7 +510,11 @@ class TestMemoryHealthTools:
             assert result["domain_count"] == 1
             assert result["decision_count"] == 1
 
-    def test_memory_learn_no_data(self, tmp_path):
+    def test_memory_learn_no_data(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         config = {
             "memory": {"session_dir": str(tmp_path / "sessions"), "keyword_learning": {}},
         }
@@ -420,21 +522,44 @@ class TestMemoryHealthTools:
             result = library_memory_learn()
             assert result["status"] == "no_data"
 
-    def test_memory_learn_with_journal(self, tmp_path):
-        sessions = tmp_path / "sessions"
-        learning = sessions.parent / "learning"
-        learning.mkdir(parents=True)
-        journal = learning / "routing-journal.jsonl"
+    def test_memory_learn_with_journal(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        journal = tmp_path / ".library" / "routing.jsonl"
+        journal.parent.mkdir(parents=True)
         journal.write_text('{"keyword": "test", "routed": true}\n')
 
         config = {
-            "memory": {"session_dir": str(sessions), "keyword_learning": {}},
+            "memory": {"session_dir": str(tmp_path / "sessions"), "keyword_learning": {}},
         }
         with patch("library_server.hooks.config_loader.load_hook_config", return_value=config), \
              patch("library_server.hooks.learning.analyze_routing_accuracy", return_value={"accuracy": 0.9}), \
              patch("library_server.hooks.learning.detect_drift", return_value=[]):
             result = library_memory_learn()
             assert result["status"] == "analyzed"
+
+    def test_memory_learn_reads_hook_journal_path(self, monkeypatch, tmp_path):
+        """Regression: server must read ~/.library/routing.jsonl (what hooks write),
+        not ~/.library/learning/routing-journal.jsonl (which nothing writes)."""
+        import json
+        from pathlib import Path
+        from library_server.server import library_memory_learn
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)  # no library-config.yaml -> defaults
+        journal = tmp_path / ".library" / "routing.jsonl"
+        journal.parent.mkdir(parents=True)
+        entry = {
+            "timestamp": "2026-08-02T00:00:00Z", "session_id": "s1", "prompt_keywords": ["auth"],
+            "matched_domain": "auth", "match_type": "keyword", "outcome": "hit",
+            "outcome_signal": "test", "injection_tokens": 100, "prompt_hash": "abc123",
+        }
+        journal.write_text("\n".join([json.dumps(entry)] * 12) + "\n")
+
+        result = library_memory_learn()
+        assert result["status"] == "analyzed"
 
 
 # --- Vault Builder tools ---
@@ -553,11 +678,49 @@ class TestVaultBuilderTools:
         mock_er.errors = []
         mock_result.extract_results = [mock_er]
         mock_orch = AsyncMock()
+        mock_orch.output_vault = None
         mock_orch.build.return_value = mock_result
         with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch):
             result = await library_vault_builder_extract("specs")
             assert result["status"] == "success"
             assert result["extract_results"][0]["files"] == 1
+
+    @pytest.mark.asyncio
+    async def test_vault_builder_extract_blocked_by_safety_gate(self):
+        """Single-extractor builds must respect the same gate as full builds."""
+        from library_server.server import library_vault_builder_extract
+
+        # An existing non-vault directory + create mode => gate blocks
+        mock_orch = AsyncMock()
+        mock_orch.output_vault = Path("/tmp/somepath")
+        mock_orch.mode = "create"
+        mock_orch.build = AsyncMock()
+        with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch), \
+             patch("library_server.vault_builder.orchestrator.detect_vault_state") as mock_detect, \
+             patch("library_server.vault_builder.orchestrator.check_safety_gate", return_value={"blocked": True, "message": "Vault exists"}):
+            mock_detect.return_value = MagicMock()
+            result = await library_vault_builder_extract("specs")
+
+            assert result["status"] == "blocked"
+            mock_orch.build.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vault_builder_extract_force_overrides_gate(self):
+        from library_server.server import library_vault_builder_extract
+
+        mock_orch = AsyncMock()
+        mock_orch.output_vault = Path("/tmp/somepath")
+        mock_orch.mode = "create"
+        build_result = MagicMock(status="completed", extract_results=[])
+        mock_orch.build = AsyncMock(return_value=build_result)
+        with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch), \
+             patch("library_server.vault_builder.orchestrator.detect_vault_state") as mock_detect, \
+             patch("library_server.vault_builder.orchestrator.check_safety_gate", return_value={"blocked": False, "message": "Force flag set"}):
+            mock_detect.return_value = MagicMock()
+            result = await library_vault_builder_extract("specs", force=True)
+
+            assert result["status"] == "completed"
+            mock_orch.build.assert_awaited_once_with(["specs"], True)
 
 
 # --- _get_vault_orchestrator factory ---
@@ -602,7 +765,9 @@ class TestPMAdapterCache:
     """The long-lived server must reuse one adapter (and its HTTP connection
     pool) across tool calls, rebuilding only when pm config changes."""
 
-    def test_same_config_returns_same_adapter(self):
+    def test_same_config_returns_same_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         section = {"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}}
         with patch("library_server.server.get_config", return_value=_make_config_mock(section)):
             first = _get_pm_adapter()
@@ -610,7 +775,9 @@ class TestPMAdapterCache:
             second = _get_pm_adapter()
         assert second is first
 
-    def test_changed_config_returns_new_adapter(self):
+    def test_changed_config_returns_new_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         with patch(
             "library_server.server.get_config",
             return_value=_make_config_mock(

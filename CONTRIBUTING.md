@@ -63,13 +63,14 @@ tests/                    # Test suite
 
 ## Naming Conventions
 
-Everything uses `library:` as the namespace:
+Skills and the CLI use `library:`/`library ` colon and space forms; MCP tools use an
+underscore-only namespace:
 
 | Layer | Convention | Example |
 |-------|-----------|---------|
 | Shell CLI | `library <subcommand>` | `library init` |
 | Skills | `library:<skill>` | `library:config` |
-| MCP tools | `library:<module>:<action>` | `library:config:get` |
+| MCP tools | `library_<module>_<action>` | `library_pm_create_task` |
 
 ## Pull Request Process
 
@@ -82,7 +83,8 @@ Everything uses `library:` as the namespace:
 ## Adding a New MCP Tool
 
 1. Add the tool function in `src/library_server/server.py`
-2. Use the `@mcp.tool(name="library:<module>:<action>")` decorator
+2. Use the `@mcp.tool(name="library_pm_create_task")` decorator (underscore form -- the colon
+   form used by skills and the CLI does not apply here)
 3. Add tests in `tests/`
 4. Update the MCP tools table in `README.md`
 

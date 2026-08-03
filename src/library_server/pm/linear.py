@@ -9,7 +9,7 @@ try:
 except ImportError:
     httpx = None  # type: ignore[assignment]
 
-from library_server.pm.adapter import PMAdapter
+from library_server.pm.adapter import PMAdapter, TransitionNotAvailableError
 from library_server.types import (
     EpicResult,
     IssueDetail,
@@ -133,6 +133,32 @@ class LinearAdapter(PMAdapter):
         status: str | None = None,
         comment: str | None = None,
     ) -> TaskResult:
+        if status is not None:
+            # Status transitions are not implemented for Linear yet (needs a
+            # workflowState id lookup + issueUpdate mutation). Raising keeps the
+            # documented invariant: an unhonored status change must never be a
+            # silent no-op (2026-04-17 audit failure class).
+            current_status = ""
+            try:
+                current = await self._graphql(
+                    """
+                    query($id: String!) {
+                        issue(id: $id) {
+                            id identifier title state { name } url
+                        }
+                    }
+                    """,
+                    {"id": task_id},
+                )
+                current_status = current["data"]["issue"]["state"]["name"]
+            except Exception:
+                pass
+            raise TransitionNotAvailableError(
+                task_id=task_id,
+                requested_status=status,
+                current_status=current_status,
+                available_transitions=[],
+            )
         if comment:
             await self._graphql(
                 """
@@ -225,6 +251,7 @@ class LinearAdapter(PMAdapter):
         description: str = "",
         lead_account_id: str = "",
         workflow_scheme: str = "",
+        project_type_key: str = "software",
     ) -> ProjectResult:
         raise NotImplementedError("Not supported by Linear adapter")
 

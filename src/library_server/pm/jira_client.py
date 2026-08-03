@@ -196,6 +196,10 @@ class JiraClient:
         """GET /rest/api/3/project/{key}"""
         return await self._request("GET", f"/rest/api/3/project/{project_key}")
 
+    async def get_project_statuses(self, project_key: str) -> list[dict]:
+        """GET /rest/api/3/project/{key}/statuses — issue types with their statuses."""
+        return await self._request("GET", f"/rest/api/3/project/{project_key}/statuses")
+
     async def update_project(self, project_key: str, **fields: Any) -> dict[str, Any]:
         """PUT /rest/api/3/project/{key} — filters out None values."""
         payload = {k: v for k, v in fields.items() if v is not None}

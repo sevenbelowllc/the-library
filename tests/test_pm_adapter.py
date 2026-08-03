@@ -366,10 +366,27 @@ class TestJiraAdapter:
             key="NEW",
             description="desc",
             lead_account_id="abc-123",
+            project_type_key="software",
         )
         assert result.project_key == "NEW"
         assert result.lead == "abc-123"
         assert result.name == "New Project"
+
+    @pytest.mark.asyncio
+    async def test_create_project_forwards_project_type_key(self, monkeypatch):
+        """create_project should forward project_type_key to the client."""
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_myself = AsyncMock(return_value={"accountId": "acct-1"})
+        adapter.client.create_project = AsyncMock(return_value={
+            "id": 1, "key": "OPS", "self": ""
+        })
+
+        await adapter.create_project("Ops", "OPS", project_type_key="business")
+
+        _, kwargs = adapter.client.create_project.call_args
+        assert kwargs["project_type_key"] == "business"
 
     @pytest.mark.asyncio
     async def test_list_projects(self, monkeypatch):
@@ -848,3 +865,63 @@ class TestLinearAdapterExtended:
         adapter = LinearAdapter(api_key="test-key")
         with pytest.raises(NotImplementedError, match="Not supported by Linear adapter"):
             await adapter.get_issue("PROJ-1")
+
+    @pytest.mark.asyncio
+    async def test_update_task_with_status_raises_transition_error(self, mocker):
+        """Regression: status= was silently ignored — the exact no-op bug class
+        TransitionNotAvailableError exists to prevent."""
+        from library_server.pm.adapter import TransitionNotAvailableError
+
+        adapter = LinearAdapter(api_key="test-key")
+        mocker.patch.object(adapter, "_graphql", return_value={
+            "data": {"issue": {
+                "id": "x", "identifier": "ENG-1", "title": "t",
+                "state": {"name": "Todo"}, "url": "",
+            }}
+        })
+
+        with pytest.raises(TransitionNotAvailableError) as exc_info:
+            await adapter.update_task("ENG-1", status="Done")
+
+        assert exc_info.value.task_id == "ENG-1"
+        assert exc_info.value.requested_status == "Done"
+        assert exc_info.value.current_status == "Todo"
+        assert exc_info.value.available_transitions == []
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_error_precedes_comment(self, mocker):
+        """When both status and comment are passed, no comment is posted before raising."""
+        from library_server.pm.adapter import TransitionNotAvailableError
+
+        adapter = LinearAdapter(api_key="test-key")
+        calls: list[str] = []
+
+        async def fake_graphql(query, variables=None):
+            calls.append(query)
+            return {"data": {"issue": {
+                "id": "x", "identifier": "ENG-1", "title": "t",
+                "state": {"name": "Todo"}, "url": "",
+            }}}
+
+        mocker.patch.object(adapter, "_graphql", side_effect=fake_graphql)
+        with pytest.raises(TransitionNotAvailableError):
+            await adapter.update_task("ENG-1", status="Done", comment="hello")
+        assert not any("commentCreate" in q for q in calls)
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_raises_when_current_status_lookup_fails(self, mocker):
+        """update_task must still raise TransitionNotAvailableError (with current_status=="")
+        when the best-effort GraphQL lookup of the current state itself fails — the lookup
+        failure must never mask the more important "no transition available" error."""
+        from library_server.pm.adapter import TransitionNotAvailableError
+
+        adapter = LinearAdapter(api_key="test-key")
+        mocker.patch.object(adapter, "_graphql", side_effect=RuntimeError("network down"))
+
+        with pytest.raises(TransitionNotAvailableError) as exc_info:
+            await adapter.update_task("ENG-1", status="Done")
+
+        assert exc_info.value.task_id == "ENG-1"
+        assert exc_info.value.requested_status == "Done"
+        assert exc_info.value.current_status == ""
+        assert exc_info.value.available_transitions == []

@@ -138,7 +138,8 @@ class TestCreateSessionMd:
         content = path.read_text()
         assert "session_id: init" in content
         assert "## Current" in content
-        assert "## Resume Instructions" in content
+        assert "## Resume" in content
+        assert "**Task:** Initial setup" in content
 
     def test_creates_parent_dirs(self, tmp_path: Path):
         path = tmp_path / "deep" / "nested" / "SESSION.md"
@@ -342,7 +343,8 @@ class TestCmdValidate:
 
 
 class TestCmdDoctor:
-    def test_fixes_missing_dirs(self, tmp_path: Path, capsys):
+    def test_fixes_missing_dirs(self, monkeypatch, tmp_path: Path, capsys):
+        monkeypatch.chdir(tmp_path)
         with patch("library_server.cli.Path.home", return_value=tmp_path):
             _cmd_doctor()
 
@@ -352,7 +354,8 @@ class TestCmdDoctor:
         assert (tmp_path / ".library" / "vault" / "transcripts").is_dir()
         assert (tmp_path / ".library" / "vault" / "sessions").is_dir()
 
-    def test_no_fixes_needed(self, tmp_path: Path, capsys):
+    def test_no_fixes_needed(self, monkeypatch, tmp_path: Path, capsys):
+        monkeypatch.chdir(tmp_path)
         # Pre-create everything
         base = tmp_path / ".library"
         for d in ["sessions", "state", "vault/transcripts", "vault/sessions"]:
@@ -362,10 +365,38 @@ class TestCmdDoctor:
         (base / "routing.jsonl").touch()
 
         with patch("library_server.cli.Path.home", return_value=tmp_path):
+            # First run installs hooks + wrapper scripts (fresh cwd has no
+            # .claude/); run once to reach the fully-healthy state, then
+            # assert the second run reports no issues.
+            _cmd_doctor()
+            capsys.readouterr()
             _cmd_doctor()
 
         captured = capsys.readouterr()
         assert "No issues found" in captured.out
+
+
+class TestDoctorHookRepair:
+    def test_doctor_installs_missing_hooks(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.chdir(tmp_path)
+
+        _cmd_doctor()
+
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        assert "SessionStart" in settings.get("hooks", {})
+        wrappers = list((tmp_path / ".claude" / "hooks").glob("*.py"))
+        assert len(wrappers) >= 6
+
+    def test_doctor_is_idempotent(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.chdir(tmp_path)
+
+        _cmd_doctor()
+        capsys.readouterr()
+        _cmd_doctor()
+        out = capsys.readouterr().out
+        assert "No issues found" in out
 
 
 # ---------------------------------------------------------------------------
@@ -887,3 +918,56 @@ class TestInjectStandardsBlock:
         claude.write_text(f"# Project\n\n{_BLOCK_START}\nincomplete\n")
         with pytest.raises(ValueError, match="marker"):
             _inject_standards_block(claude)
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap state round-trip (data-loss bug fix)
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapStateRoundTrip:
+    """CLI-generated state files must survive parse -> render without data loss.
+
+    Regression: pre-0.3.2 templates used '- task:' bullets that the bold-field
+    parsers could not read, so the first session_end blanked project/focus/task.
+    """
+
+    def test_session_md_round_trips(self, tmp_path):
+        from library_server.cli import _create_session_md
+        from library_server.state.session_state import parse_session_state
+
+        path = tmp_path / "SESSION.md"
+        _create_session_md(path)
+        data = parse_session_state(path)
+        assert data.task == "Initial setup"
+        assert data.doing == "Library initialization"
+        assert data.branch == "main"
+        assert data.session_id == "init"
+        assert data.resume_instructions  # non-empty
+
+    def test_project_state_round_trips(self, tmp_path):
+        from library_server.cli import _create_project_state
+        from library_server.state.project_state import parse_project_state
+
+        path = tmp_path / "PROJECT-STATE.md"
+        _create_project_state(path, "my-project")
+        data = parse_project_state(path)
+        assert data.project == "my-project"
+        assert data.focus == "Initial setup"
+        assert data.active_task != ""
+        assert data.session_count == 0
+
+    def test_project_state_survives_session_count_update(self, tmp_path):
+        """The exact data-loss scenario: session_end's field update must not blank fields."""
+        from library_server.cli import _create_project_state
+        from library_server.state.project_state import (
+            parse_project_state,
+            update_project_state_field,
+        )
+
+        path = tmp_path / "PROJECT-STATE.md"
+        _create_project_state(path, "my-project")
+        update_project_state_field(path, "session_count", 1)
+        data = parse_project_state(path)
+        assert data.project == "my-project"
+        assert data.session_count == 1

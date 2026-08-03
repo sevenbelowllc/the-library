@@ -137,6 +137,52 @@ class TestLoadHookConfigOverrides:
         assert result["pm"]["provider"] == "jira"
 
 
+class TestRoutingJournalPath:
+    """routing_journal_path() must return the file the hook wrappers write."""
+
+    def test_matches_hook_wrapper_default(self, monkeypatch, tmp_path):
+        """server-side readers must read the exact file the hook wrappers write."""
+        from pathlib import Path
+        from library_server.hooks.config_loader import routing_journal_path
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        assert routing_journal_path() == tmp_path / ".library" / "routing.jsonl"
+
+    def test_writer_and_reader_stay_in_lockstep(self, tmp_path: Path) -> None:
+        """Divergence regression guard.
+
+        ``routing_journal_path()`` is the canonical reader-side path helper,
+        but the writer side — the ``journal_path`` default baked into the
+        generated prompt_scan/stop_capture hook wrappers by
+        ``cli._ensure_hook_scripts`` — is an independent hardcoded literal
+        string, not a call to this helper (the wrapper scripts are
+        standalone processes and cannot import library_server at hook-run
+        time). Nothing enforces that the two stay equal. This test fails if
+        either side changes alone, so a future edit to one must also update
+        the other (the exact regression that made 0.3.1's learning tools
+        read a journal file nothing wrote).
+        """
+        import os
+
+        from library_server.cli import _ensure_hook_scripts
+        from library_server.hooks.config_loader import routing_journal_path
+
+        hooks_dir = tmp_path / ".claude" / "hooks"
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        _ensure_hook_scripts(hooks_dir, project_dir)
+
+        prompt_scan_src = (hooks_dir / "prompt_scan.py").read_text()
+        stop_capture_src = (hooks_dir / "stop_capture.py").read_text()
+
+        expected_literal = "os.path.expanduser('~/.library/routing.jsonl')"
+
+        assert expected_literal in prompt_scan_src
+        assert expected_literal in stop_capture_src
+        assert os.path.expanduser("~/.library/routing.jsonl") == str(routing_journal_path())
+
+
 class TestDeepMerge:
     """Unit tests for the _deep_merge helper."""
 

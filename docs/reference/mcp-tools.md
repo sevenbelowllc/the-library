@@ -13,10 +13,10 @@ Complete reference for all MCP tools exposed by The Library's MCP server.
 | Memory | `memory_scan`, `memory_aggregate`, `memory_prune`, `memory_health`, `memory_learn` | 5 |
 | Vault | `vault_init`, `vault_validate`, `vault_parse`, `vault_ingest` | 4 |
 | Vault Builder | `vault_builder_config`, `vault_builder_survey`, `vault_builder_preview`, `vault_builder_build`, `vault_builder_extract` | 5 |
-| Project Management | `pm_create_task`, `pm_create_epic`, `pm_sync`, `pm_update`, `pm_query`, `pm_create_project`, `pm_list_projects`, `pm_get_project`, `pm_update_project`, `pm_assign_task`, `pm_link_issues`, `pm_get_link_types` | 12 |
+| Project Management | `pm_create_task`, `pm_create_epic`, `pm_sync`, `pm_update`, `pm_get_issue`, `pm_query`, `pm_create_project`, `pm_list_projects`, `pm_get_project`, `pm_update_project`, `pm_assign_task`, `pm_link_issues`, `pm_get_link_types`, `pm_autodetect_workflow` | 14 |
 | Graph | `graph_rebuild`, `graph_query`, `graph_path` | 3 |
 | Dev | `dev_token_report` | 1 |
-| **Total** | | **35** |
+| **Total** | | **37** |
 
 All tools are prefixed with `library_` in the MCP namespace (e.g., `library_config_get`).
 
@@ -62,7 +62,8 @@ All tools are prefixed with `library_` in the MCP namespace (e.g., `library_conf
 
 ### library_checkpoint_write
 
-**Description:** Write a session checkpoint. Lists are semicolon-separated strings.
+**Description:** Write a session checkpoint. List params are semicolon-separated strings. Structured
+params use pipe-separated fields within each semicolon-separated entry.
 
 **Parameters:**
 
@@ -74,6 +75,9 @@ All tools are prefixed with `library_` in the MCP namespace (e.g., `library_conf
 | accomplished | str | No | `""` | Semicolon-separated list of accomplishments |
 | next_actions | str | No | `""` | Semicolon-separated list of next actions |
 | key_context | str | No | `""` | Semicolon-separated list of context items to remember |
+| changes | str | No | `""` | Semicolon-separated list of changes made this session |
+| open_decisions | str | No | `""` | Semicolon-separated entries, each `question\|options\|impact` |
+| memory_updates | str | No | `""` | Semicolon-separated entries, each `file\|type\|content` |
 
 **Returns:** `dict` -- Path to written checkpoint file and parsed data.
 
@@ -340,14 +344,19 @@ All tools are prefixed with `library_` in the MCP namespace (e.g., `library_conf
 
 **Description:** Run a single extractor by name. Set dry_run=True for preview only.
 
+Applies the same create-mode safety gate as `library_vault_builder_build`; pass
+`force=True` to overwrite an existing vault.
+
 **Parameters:**
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | extractor | str | Yes | -- | Extractor name (e.g. `specs`, `jira`, `obsidian_vault`, `claude_memory`) |
 | dry_run | bool | No | `False` | Preview mode -- show what would be extracted |
+| force | bool | No | `False` | Overwrite existing vault (bypasses safety gate) |
 
 **Returns:** `dict` -- Same as `vault_builder_build` for single extractor, or preview output if dry_run.
+If the create-mode safety gate blocks the run, returns `{status: "blocked", message}` instead.
 
 **Used by skills:** (available for direct use)
 
@@ -432,6 +441,24 @@ Used by skills to manage tasks as part of automated workflows.
 
 ---
 
+#### library_pm_get_issue
+
+**Description:** Fetch full detail for an issue -- fields, comments, available transitions.
+
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| task_id | str | Yes | -- | Task ID (e.g. `COS-123`) |
+
+**Returns:** `dict` -- `{id, summary, description, status, labels, parent, assignee, comments[], available_transitions[], url}`.
+`comments` holds up to 20 most recent entries, each `{author, created, body}`. `available_transitions`
+is a list of `{name, to_status}` that callers can use to decide the next workflow move.
+
+**Used by skills:** (available for direct use)
+
+---
+
 #### library_pm_query
 
 **Description:** Query tasks by filter. Returns matching tasks.
@@ -465,7 +492,7 @@ For direct use -- project management and issue linking operations.
 | name | str | Yes | -- | Project name |
 | key | str | Yes | -- | Project key (e.g. `COS`) |
 | description | str | No | `""` | Project description |
-| project_type_key | str | No | `"software"` | Jira project type |
+| project_type_key | str | No | `"software"` | Jira project type -- now honored and passed through to the adapter |
 | workflow_scheme | str | No | `""` | Workflow scheme name; falls back to config default |
 
 **Returns:** `dict` -- `{project_key, name, url}`.
@@ -562,6 +589,25 @@ For direct use -- project management and issue linking operations.
 **Parameters:** None.
 
 **Returns:** `dict` -- `{types}` with list of available link type names.
+
+**Used by skills:** (admin -- direct use)
+
+---
+
+#### library_pm_autodetect_workflow
+
+**Description:** Detect a `pm.workflow` block from a live Jira project's statuses. Jira only.
+
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| project_key | str | Yes | -- | Project key to inspect |
+
+**Returns:** `dict` -- On success: `{status: "detected", project_key, workflow: {states, in_progress, in_review, closed}}`,
+derived from `GET /project/{key}/statuses`. For non-Jira providers or a workflow that can't be
+inferred: `{status: "error", error}`. Detection only proposes a workflow -- persist it by editing
+the `pm.workflow` section of `library-config.yaml`.
 
 **Used by skills:** (admin -- direct use)
 

@@ -6,11 +6,13 @@ This document covers the test strategy for The Library MCP server, including
 all modules: vault builder, PM integration (Jira and Linear), knowledge graph,
 memory management, checkpoint system, and supporting utilities.
 
-**Current stats (as of 2026-04-16):**
+**Current stats (historical snapshot from 2026-04-16 -- `coverage-baseline.txt` is authoritative
+for the current floor):**
 
 - **Total tests:** 746
 - **Overall coverage:** 94.11%
-- **Coverage floor:** 88% (enforced via `pytest-cov` -- builds fail below this threshold)
+- **Coverage floor:** the ratchet -- `bin/library-coverage-ratchet` fails CI on any drop versus
+  `coverage-baseline.txt` (currently 94.35). There is no static threshold in `pyproject.toml`.
 
 ---
 
@@ -65,9 +67,10 @@ ATLASSIAN_EMAIL=you@example.com JIRA_API_TOKEN=tok \
 
 ### Coverage Floor Enforcement
 
-The 88% coverage floor is configured in `pyproject.toml` via `pytest-cov`. Any
-PR or local test run that drops coverage below 88% will fail. The project
-currently sits at 94.11%, well above the floor.
+Coverage floor: the ratchet -- `bin/library-coverage-ratchet` fails CI on any drop versus
+`coverage-baseline.txt` (currently 94.35). There is no static threshold in `pyproject.toml`.
+Run `bin/library-coverage-ratchet --bump` to raise the baseline after an intentional
+coverage improvement.
 
 ---
 
@@ -162,7 +165,8 @@ significant refactor.
 - **Unit tests** run on every push (no credentials required)
 - **Integration tests** skipped in CI by default (no `ATLASSIAN_EMAIL`/`JIRA_API_TOKEN`)
 - To run integration tests in CI, add the secrets to the pipeline environment
-- **Coverage gate:** 88% minimum enforced by `pytest-cov` in `pyproject.toml`
+- **Coverage gate:** the ratchet -- `bin/library-coverage-ratchet` fails CI on any drop versus
+  `coverage-baseline.txt` (currently 94.35). There is no static threshold in `pyproject.toml`.
 
 ---
 
@@ -171,5 +175,5 @@ significant refactor.
 1. **Unit test** every new method in the relevant test file
 2. **Adapter test** for type mapping/JQL in `tests/test_pm_adapter.py`
 3. **Integration test** for end-to-end API verification in `tests/test_jira_integration.py`
-4. Maintain the 88% coverage floor -- check with `python -m pytest` before committing
+4. Maintain the coverage ratchet -- run `bin/library-coverage-ratchet` before committing
 5. Update this plan if the test inventory changes significantly

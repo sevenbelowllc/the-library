@@ -104,6 +104,7 @@ def main() -> None:
 
 def _cmd_init(args: argparse.Namespace) -> None:
     """Initialize The Library for a project."""
+    from library_server.hooks.config_loader import routing_journal_path
     project_dir = args.project_dir.resolve()
     print(f"Initializing The Library v{__version__} in {project_dir}\n")
 
@@ -253,8 +254,9 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
     # Step 10: Initialize routing journal
     steps_total += 1
-    journal = Path.home() / ".library" / "routing.jsonl"
+    journal = routing_journal_path()
     if not journal.exists():
+        journal.parent.mkdir(parents=True, exist_ok=True)
         journal.touch()
         print("  [done] Created routing journal")
     else:
@@ -382,6 +384,7 @@ def _cmd_validate() -> None:
 
 def _cmd_doctor() -> None:
     """Diagnose and fix common installation issues."""
+    from library_server.hooks.config_loader import routing_journal_path
     print(f"The Library v{__version__} — Doctor\n")
 
     fixes = 0
@@ -402,8 +405,9 @@ def _cmd_doctor() -> None:
         fixes += 1
 
     # Fix routing journal
-    journal = Path.home() / ".library" / "routing.jsonl"
+    journal = routing_journal_path()
     if not journal.exists():
+        journal.parent.mkdir(parents=True, exist_ok=True)
         journal.touch()
         print("  [fix] Created routing journal")
         fixes += 1
@@ -415,6 +419,17 @@ def _cmd_doctor() -> None:
         usage.write_text("0", encoding="utf-8")
         print("  [fix] Created context usage tracker")
         fixes += 1
+
+    # Fix hook registration + wrapper scripts (what `validate` flags)
+    project_dir = Path.cwd()
+    settings_path = project_dir / ".claude" / "settings.json"
+    if _install_hooks(settings_path, project_dir):
+        print("  [fix] Registered hooks in .claude/settings.json")
+        fixes += 1
+    wrappers_written = _ensure_hook_scripts(project_dir / ".claude" / "hooks", project_dir)
+    if wrappers_written:
+        print(f"  [fix] Wrote {wrappers_written} hook wrapper script(s)")
+        fixes += wrappers_written
 
     if fixes == 0:
         print("  No issues found. Everything looks good.")
@@ -524,56 +539,39 @@ def _ensure_runtime_dirs() -> bool:
 
 
 def _create_session_md(path: Path) -> None:
-    """Create a fresh SESSION.md."""
+    """Create a fresh SESSION.md via the canonical renderer (round-trip safe)."""
+    from library_server.state.session_state import render_session_state
+    from library_server.types import SessionStateData
+
     path.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    content = f"""---
-session_id: init
-started: {now}
-project: ""
----
-
-## Current
-- task: Initial setup
-- doing: Library initialization
-- branch: main
-- turns: 0
-
-## Decisions
-(none yet)
-
-## Files Touched
-(none yet)
-
-## Domains Loaded
-(none yet)
-
-## Resume Instructions
-Fresh session — The Library has been initialized. Run library:config for interactive setup.
-"""
-    path.write_text(content, encoding="utf-8")
+    data = SessionStateData(
+        session_id="init",
+        task="Initial setup",
+        doing="Library initialization",
+        branch="main",
+        resume_instructions=[
+            "Fresh session — The Library has been initialized. "
+            "Run library:config for interactive setup."
+        ],
+        started=now,
+        last_updated=now,
+    )
+    path.write_text(render_session_state(data), encoding="utf-8")
 
 
 def _create_project_state(path: Path, project_name: str) -> None:
-    """Create a starter PROJECT-STATE.md."""
+    """Create a starter PROJECT-STATE.md via the canonical renderer (round-trip safe)."""
+    from library_server.state.project_state import render_project_state
+    from library_server.types import ProjectStateData
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    content = f"""---
-library_version: "{__version__}"
-updated: {now}
-session_count: 0
----
-
-## Active
-- Project: {project_name}
-- Focus: Initial setup
-- Active task: Run library:config for interactive configuration
-- Blockers: none
-
-## PM Projects
-(none configured — run library:config pm to set up)
-"""
-    path.write_text(content, encoding="utf-8")
+    data = ProjectStateData(
+        project=project_name,
+        focus="Initial setup",
+        active_task="Run library:config for interactive configuration",
+    )
+    path.write_text(render_project_state(data), encoding="utf-8")
 
 
 def _install_hooks(settings_path: Path, project_dir: Path) -> bool:
@@ -661,8 +659,6 @@ def _ensure_hook_scripts(hooks_dir: Path, project_dir: Path) -> int:
 
     for script_name, info in scripts.items():
         script_path = hooks_dir / f"{script_name}.py"
-        if script_path.exists() and not True:  # always overwrite hook wrappers
-            continue
 
         defaults_lines = []
         for key, val in info["defaults"].items():
@@ -738,6 +734,9 @@ result = subprocess.run([sys.executable, SCRIPT]{args_line}, input=augmented, ca
 sys.stdout.buffer.write(result.stdout)
 sys.exit(result.returncode)
 '''
+
+        if script_path.exists() and script_path.read_text() == content:
+            continue  # unchanged — don't count as created/fixed
 
         script_path.write_text(content, encoding="utf-8")
         script_path.chmod(0o755)

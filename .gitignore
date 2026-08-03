@@ -40,3 +40,4 @@ vault/
 graphify-out/
 .library/
 .axon/
+checkpoints/

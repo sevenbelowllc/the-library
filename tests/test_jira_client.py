@@ -133,6 +133,14 @@ class TestProjectMethods:
             assert result["name"] == "Compliance OS"
 
     @pytest.mark.asyncio
+    async def test_get_project_statuses(self, client: JiraClient):
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = [{"name": "Task", "statuses": [{"name": "To Do"}]}]
+            result = await client.get_project_statuses("PROJ")
+            mock_req.assert_called_once_with("GET", "/rest/api/3/project/PROJ/statuses")
+            assert result[0]["statuses"][0]["name"] == "To Do"
+
+    @pytest.mark.asyncio
     async def test_update_project(self, client: JiraClient):
         with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
             mock_req.return_value = {"key": "COS"}
