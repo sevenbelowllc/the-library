@@ -252,6 +252,15 @@ def validate_config(config: LibraryConfig) -> dict:
                         f"pm.workflow.{key}={val!r} is not present in pm.workflow.states {states}"
                     )
 
+            # blocked is optional (sync_state bucketing works without it), but
+            # if set it must name a real state — it is consumed by
+            # server._get_pm_adapter and silently misclassifies otherwise.
+            blocked_val = workflow.get("blocked")
+            if blocked_val is not None and blocked_val not in states:
+                warnings.append(
+                    f"pm.workflow.blocked={blocked_val!r} is not present in pm.workflow.states {states}"
+                )
+
     # Check memory path
     memory = config.get_section("memory")
     memory_path = memory.get("path")
