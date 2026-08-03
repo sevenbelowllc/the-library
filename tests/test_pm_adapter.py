@@ -907,3 +907,21 @@ class TestLinearAdapterExtended:
         with pytest.raises(TransitionNotAvailableError):
             await adapter.update_task("ENG-1", status="Done", comment="hello")
         assert not any("commentCreate" in q for q in calls)
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_raises_when_current_status_lookup_fails(self, mocker):
+        """update_task must still raise TransitionNotAvailableError (with current_status=="")
+        when the best-effort GraphQL lookup of the current state itself fails — the lookup
+        failure must never mask the more important "no transition available" error."""
+        from library_server.pm.adapter import TransitionNotAvailableError
+
+        adapter = LinearAdapter(api_key="test-key")
+        mocker.patch.object(adapter, "_graphql", side_effect=RuntimeError("network down"))
+
+        with pytest.raises(TransitionNotAvailableError) as exc_info:
+            await adapter.update_task("ENG-1", status="Done")
+
+        assert exc_info.value.task_id == "ENG-1"
+        assert exc_info.value.requested_status == "Done"
+        assert exc_info.value.current_status == ""
+        assert exc_info.value.available_transitions == []
