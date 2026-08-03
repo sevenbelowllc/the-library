@@ -340,6 +340,28 @@ async def library_pm_get_link_types() -> dict:
     return {"types": types}
 
 
+@mcp.tool(name="library_pm_autodetect_workflow")
+async def library_pm_autodetect_workflow(project_key: str) -> dict:
+    """Detect a pm.workflow block from a live Jira project's statuses.
+
+    Returns {states, in_progress, in_review, closed} derived from
+    GET /project/{key}/statuses. Review the proposal, then persist it by
+    editing the pm.workflow section of library-config.yaml. Jira only.
+    """
+    from library_server.config import autodetect_jira_workflow
+
+    adapter = _get_pm_adapter()
+    client = getattr(adapter, "client", None)
+    if client is None:
+        return {"status": "error", "error": "Workflow autodetection requires pm.provider=jira."}
+    statuses = await client.get_project_statuses(project_key)
+    try:
+        workflow = autodetect_jira_workflow(statuses)
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+    return {"status": "detected", "project_key": project_key, "workflow": workflow}
+
+
 # Cache the adapter across tool calls so its JiraClient keeps one HTTP
 # connection pool alive for the server's lifetime. Keyed on the pm config
 # section: a config change (or a differing repr) rebuilds the adapter.

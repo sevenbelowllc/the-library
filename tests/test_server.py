@@ -336,6 +336,37 @@ class TestPMTools:
         _, kwargs = adapter.create_project.call_args
         assert kwargs["project_type_key"] == "business"
 
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow(self, monkeypatch):
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock()
+        adapter.client.get_project_statuses = AsyncMock(return_value=[
+            {"name": "Task", "statuses": [
+                {"name": "To Do"}, {"name": "In Progress"},
+                {"name": "In Review"}, {"name": "Done"},
+            ]}
+        ])
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "detected"
+        assert result["workflow"]["closed"] == "Done"
+        assert result["workflow"]["in_progress"] == "In Progress"
+        assert result["workflow"]["states"] == ["To Do", "In Progress", "In Review", "Done"]
+
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow_requires_jira(self, monkeypatch):
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock(spec=[])  # no .client attribute — Linear-shaped
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "error"
+
 
 # --- _get_pm_adapter factory ---
 
