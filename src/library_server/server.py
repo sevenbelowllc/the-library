@@ -51,20 +51,41 @@ def library_checkpoint_write(
     accomplished: str = "",
     next_actions: str = "",
     key_context: str = "",
+    changes: str = "",
+    open_decisions: str = "",
+    memory_updates: str = "",
 ) -> dict:
-    """Write a session checkpoint. Lists are semicolon-separated strings."""
+    """Write a session checkpoint. List params are semicolon-separated strings.
+
+    Structured params use pipe-separated fields within each semicolon-separated
+    entry: open_decisions entries are "question|options|impact";
+    memory_updates entries are "file|type|content".
+    """
     from library_server.checkpoint.checkpoint import write_checkpoint
     from library_server.types import CheckpointData
     from datetime import date
+
+    def _split(raw: str) -> list[str]:
+        return [s.strip() for s in raw.split(";") if s.strip()] if raw else []
+
+    def _split_records(raw: str, keys: tuple[str, ...]) -> list[dict]:
+        records = []
+        for entry in _split(raw):
+            parts = [p.strip() for p in entry.split("|")]
+            records.append({k: (parts[i] if i < len(parts) else "") for i, k in enumerate(keys)})
+        return records
 
     data = CheckpointData(
         topic=topic,
         date=date.today().isoformat(),
         status=status,
         next_session=next_session,
-        accomplished=[s.strip() for s in accomplished.split(";") if s.strip()] if accomplished else [],
-        next_actions=[s.strip() for s in next_actions.split(";") if s.strip()] if next_actions else [],
-        key_context=[s.strip() for s in key_context.split(";") if s.strip()] if key_context else [],
+        accomplished=_split(accomplished),
+        changes=_split(changes),
+        next_actions=_split(next_actions),
+        open_decisions=_split_records(open_decisions, ("question", "options", "impact")),
+        key_context=_split(key_context),
+        memory_updates=_split_records(memory_updates, ("file", "type", "content")),
     )
     try:
         checkpoint_dir = resolve_checkpoint_dir(get_config())
