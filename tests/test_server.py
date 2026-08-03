@@ -391,6 +391,21 @@ class TestPMTools:
 
         assert result["status"] == "error"
 
+    @pytest.mark.asyncio
+    async def test_pm_autodetect_workflow_no_statuses_returns_error(self, monkeypatch):
+        """When Jira returns no statuses, autodetect_jira_workflow raises ValueError —
+        the tool must surface that as a structured error, not an unhandled exception."""
+        from library_server.server import library_pm_autodetect_workflow
+
+        adapter = MagicMock()
+        adapter.client.get_project_statuses = AsyncMock(return_value=[])
+        monkeypatch.setattr("library_server.server._get_pm_adapter", lambda: adapter)
+
+        result = await library_pm_autodetect_workflow("PROJ")
+
+        assert result["status"] == "error"
+        assert "statuses" in result["error"].lower()
+
 
 # --- _get_pm_adapter factory ---
 

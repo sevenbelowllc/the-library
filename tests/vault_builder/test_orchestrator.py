@@ -600,3 +600,118 @@ async def test_fail_fast_skips_undispatched_extractors(tmp_path):
     skipped = [r for r in result.extract_results if r.errors and "Skipped: fail_fast" in r.errors[0]]
     assert len(skipped) == 3
     assert result.status in ("failed", "completed_with_warnings")
+
+
+# ---------------------------------------------------------------------------
+# detect_vault_state() — target directory classification
+# ---------------------------------------------------------------------------
+
+def test_detect_vault_state_missing_directory(tmp_path: Path):
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    assert detect_vault_state(tmp_path / "does-not-exist") == VaultState.NEW_VAULT
+
+
+def test_detect_vault_state_empty_directory(tmp_path: Path):
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert detect_vault_state(empty) == VaultState.NEW_VAULT
+
+
+def test_detect_vault_state_previous_build(tmp_path: Path):
+    """A raw/_build-manifest.md marks a vault The Library has already built."""
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    vault = tmp_path / "vault"
+    (vault / "raw").mkdir(parents=True)
+    (vault / "raw" / "_build-manifest.md").write_text("# Build manifest")
+    assert detect_vault_state(vault) == VaultState.PREVIOUS_BUILD
+
+
+def test_detect_vault_state_existing_vault_with_raw(tmp_path: Path):
+    """.obsidian + raw/ but no manifest — a vault built by something else, or a
+    partial/interrupted build."""
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    vault = tmp_path / "vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    (vault / "raw").mkdir()
+    assert detect_vault_state(vault) == VaultState.EXISTING_VAULT_WITH_RAW
+
+
+def test_detect_vault_state_existing_vault_no_raw(tmp_path: Path):
+    """A real Obsidian vault (has .obsidian/) that The Library has never touched."""
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    vault = tmp_path / "vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    (vault / "some-note.md").write_text("hi")
+    assert detect_vault_state(vault) == VaultState.EXISTING_VAULT_NO_RAW
+
+
+def test_detect_vault_state_non_vault_directory(tmp_path: Path):
+    """A non-empty directory with neither .obsidian/ nor raw/ — some unrelated content."""
+    from library_server.vault_builder.orchestrator import detect_vault_state
+    from library_server.vault_builder.types import VaultState
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "random-file.txt").write_text("hi")
+    assert detect_vault_state(vault) == VaultState.NON_VAULT_DIRECTORY
+
+
+# ---------------------------------------------------------------------------
+# check_safety_gate() — create-mode overwrite protection
+# ---------------------------------------------------------------------------
+
+def test_check_safety_gate_enrich_mode_never_blocks():
+    """enrich mode is explicitly designed to layer onto existing content."""
+    from library_server.vault_builder.orchestrator import check_safety_gate
+    from library_server.vault_builder.types import VaultState
+
+    gate = check_safety_gate("enrich", VaultState.EXISTING_VAULT_WITH_RAW, force=False)
+    assert gate["blocked"] is False
+
+
+def test_check_safety_gate_create_mode_new_vault_not_blocked():
+    """A brand-new target directory is always safe under create mode."""
+    from library_server.vault_builder.orchestrator import check_safety_gate
+    from library_server.vault_builder.types import VaultState
+
+    gate = check_safety_gate("create", VaultState.NEW_VAULT, force=False)
+    assert gate["blocked"] is False
+
+
+def test_check_safety_gate_create_mode_blocks_existing_content_without_force():
+    """create mode over existing content must be blocked unless force=True — this is
+    the safety gate that prevents an accidental overwrite of a real vault."""
+    from library_server.vault_builder.orchestrator import check_safety_gate
+    from library_server.vault_builder.types import VaultState
+
+    gate = check_safety_gate("create", VaultState.EXISTING_VAULT_WITH_RAW, force=False)
+    assert gate["blocked"] is True
+    assert "force" in gate["message"].lower()
+
+
+def test_check_safety_gate_create_mode_force_overrides_block():
+    from library_server.vault_builder.orchestrator import check_safety_gate
+    from library_server.vault_builder.types import VaultState
+
+    gate = check_safety_gate("create", VaultState.EXISTING_VAULT_NO_RAW, force=True)
+    assert gate["blocked"] is False
+    assert "force" in gate["message"].lower()
+
+
+def test_check_safety_gate_create_mode_blocks_non_vault_directory():
+    from library_server.vault_builder.orchestrator import check_safety_gate
+    from library_server.vault_builder.types import VaultState
+
+    gate = check_safety_gate("create", VaultState.NON_VAULT_DIRECTORY, force=False)
+    assert gate["blocked"] is True
