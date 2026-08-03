@@ -106,3 +106,31 @@ hooks:
   pre_compact: true
   session_end: true
   status_line: true
+
+# Vault Builder — multi-source extraction pipeline (see docs/guides/vault-builder.md)
+# A source block must be present (non-empty) for its extractor to be registered.
+# vault_builder:
+#   mode: create                    # create | enrich (enrich never touches .obsidian/ or wiki/)
+#   output_vault: ./vault-output
+#   parallel: true                  # run extractors concurrently
+#   max_parallel_extractors: 8      # concurrency cap when parallel: true
+#   fail_fast: false                # skip not-yet-started extractors after the first failure
+#   graphify:
+#     enabled: false                # build knowledge graph + wiki stubs from extracted frontmatter
+#   sources:
+#     specs:
+#       source_path: ./library-reading-room/specs
+#     claude_memory:
+#       source_path: ~/.claude/projects/<project>/memory
+#     session_context:
+#       source_path: ./library-reading-room/sessions
+#     notebooklm:
+#       source_path: ./notebooklm-exports
+#     obsidian_vault:
+#       source_path: ~/ObsidianVault    # read-only source
+#     jira:
+#       instance: https://your-site.atlassian.net   # auth via ATLASSIAN_EMAIL + JIRA_API_TOKEN env vars
+#       projects: [PROJ1]
+#     axon_bridge:                      # being replaced by a graphify-based extractor (see specs/)
+#       repos:
+#         - {name: my-repo, path: ../my-repo, language: python}

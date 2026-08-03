@@ -81,14 +81,14 @@ The Reading Room is where your project's "books" live — canonical specs, imple
 
 ## MCP Server
 
-The Library runs as an MCP server exposing 36 tools across 8 modules
+The Library runs as an MCP server exposing 37 tools across 8 modules
 (tool names below are the registered MCP names):
 
 | Module | Tools |
 |--------|-------|
 | Config | `library_config_get`, `library_config_set` |
 | Vault | `library_vault_init`, `library_vault_validate`, `library_vault_parse`, `library_vault_ingest` |
-| PM | `library_pm_create_task`, `library_pm_create_epic`, `library_pm_sync`, `library_pm_update`, `library_pm_get_issue`, `library_pm_query`, `library_pm_create_project`, `library_pm_list_projects`, `library_pm_get_project`, `library_pm_update_project`, `library_pm_assign_task`, `library_pm_link_issues`, `library_pm_get_link_types` |
+| PM | `library_pm_create_task`, `library_pm_create_epic`, `library_pm_sync`, `library_pm_update`, `library_pm_get_issue`, `library_pm_query`, `library_pm_create_project`, `library_pm_list_projects`, `library_pm_get_project`, `library_pm_update_project`, `library_pm_assign_task`, `library_pm_link_issues`, `library_pm_get_link_types`, `library_pm_autodetect_workflow` |
 | Memory | `library_memory_scan`, `library_memory_aggregate`, `library_memory_prune`, `library_memory_health`, `library_memory_learn` |
 | Checkpoint | `library_checkpoint_write`, `library_checkpoint_read`, `library_checkpoint_list` |
 | Graph | `library_graph_rebuild`, `library_graph_query`, `library_graph_path` |

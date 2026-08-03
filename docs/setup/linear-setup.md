@@ -56,6 +56,13 @@ The following operations raise `NotImplementedError` on the Linear adapter:
 - `library_pm_assign_task` — explicit issue assignment
 - `library_pm_link_issues` — issue linking
 - `library_pm_get_link_types` — link type enumeration
+- `library_pm_get_issue` — full issue detail (fields, comments, available transitions)
+
+Also Jira-only: `library_pm_autodetect_workflow` — depends on Jira's `/project/{key}/statuses`
+endpoint and has no Linear equivalent.
+
+Status transitions via `library_pm_update` raise a structured `transition_not_available` error
+rather than silently ignoring the request.
 
 These capabilities are on the roadmap. Track progress at the [LIBRARY Jira project](https://sevenbelow.atlassian.net/jira/software/projects/LIBRARY/boards).
 
