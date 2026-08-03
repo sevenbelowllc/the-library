@@ -588,11 +588,49 @@ class TestVaultBuilderTools:
         mock_er.errors = []
         mock_result.extract_results = [mock_er]
         mock_orch = AsyncMock()
+        mock_orch.output_vault = None
         mock_orch.build.return_value = mock_result
         with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch):
             result = await library_vault_builder_extract("specs")
             assert result["status"] == "success"
             assert result["extract_results"][0]["files"] == 1
+
+    @pytest.mark.asyncio
+    async def test_vault_builder_extract_blocked_by_safety_gate(self):
+        """Single-extractor builds must respect the same gate as full builds."""
+        from library_server.server import library_vault_builder_extract
+
+        # An existing non-vault directory + create mode => gate blocks
+        mock_orch = AsyncMock()
+        mock_orch.output_vault = Path("/tmp/somepath")
+        mock_orch.mode = "create"
+        mock_orch.build = AsyncMock()
+        with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch), \
+             patch("library_server.vault_builder.orchestrator.detect_vault_state") as mock_detect, \
+             patch("library_server.vault_builder.orchestrator.check_safety_gate", return_value={"blocked": True, "message": "Vault exists"}):
+            mock_detect.return_value = MagicMock()
+            result = await library_vault_builder_extract("specs")
+
+            assert result["status"] == "blocked"
+            mock_orch.build.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vault_builder_extract_force_overrides_gate(self):
+        from library_server.server import library_vault_builder_extract
+
+        mock_orch = AsyncMock()
+        mock_orch.output_vault = Path("/tmp/somepath")
+        mock_orch.mode = "create"
+        build_result = MagicMock(status="completed", extract_results=[])
+        mock_orch.build = AsyncMock(return_value=build_result)
+        with patch("library_server.server._get_vault_orchestrator", return_value=mock_orch), \
+             patch("library_server.vault_builder.orchestrator.detect_vault_state") as mock_detect, \
+             patch("library_server.vault_builder.orchestrator.check_safety_gate", return_value={"blocked": False, "message": "Force flag set"}):
+            mock_detect.return_value = MagicMock()
+            result = await library_vault_builder_extract("specs", force=True)
+
+            assert result["status"] == "completed"
+            mock_orch.build.assert_awaited_once_with(["specs"], True)
 
 
 # --- _get_vault_orchestrator factory ---
