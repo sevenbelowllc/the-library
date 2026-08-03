@@ -52,6 +52,7 @@ pm:
   #   states: ["To Do", "In Progress", "In Review", "Closed"]
   #   in_progress: "In Progress"
   #   in_review: "In Review"
+  #   blocked: "Blocked"                    # optional — status bucketed as blocked by pm sync
   #   closed: "Closed"
   projects: []                          # list of {key, name} objects
   # Example:
