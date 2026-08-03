@@ -369,6 +369,29 @@ class TestCmdDoctor:
         assert "No issues found" in captured.out
 
 
+class TestDoctorHookRepair:
+    def test_doctor_installs_missing_hooks(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.chdir(tmp_path)
+
+        _cmd_doctor()
+
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        assert "SessionStart" in settings.get("hooks", {})
+        wrappers = list((tmp_path / ".claude" / "hooks").glob("*.py"))
+        assert len(wrappers) >= 6
+
+    def test_doctor_is_idempotent(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+        monkeypatch.chdir(tmp_path)
+
+        _cmd_doctor()
+        capsys.readouterr()
+        _cmd_doctor()
+        out = capsys.readouterr().out
+        assert "No issues found" in out
+
+
 # ---------------------------------------------------------------------------
 # main() dispatch
 # ---------------------------------------------------------------------------
