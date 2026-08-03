@@ -366,10 +366,27 @@ class TestJiraAdapter:
             key="NEW",
             description="desc",
             lead_account_id="abc-123",
+            project_type_key="software",
         )
         assert result.project_key == "NEW"
         assert result.lead == "abc-123"
         assert result.name == "New Project"
+
+    @pytest.mark.asyncio
+    async def test_create_project_forwards_project_type_key(self, monkeypatch):
+        """create_project should forward project_type_key to the client."""
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "tok")
+        adapter = JiraAdapter(site_url="https://test.atlassian.net")
+        adapter.client.get_myself = AsyncMock(return_value={"accountId": "acct-1"})
+        adapter.client.create_project = AsyncMock(return_value={
+            "id": 1, "key": "OPS", "self": ""
+        })
+
+        await adapter.create_project("Ops", "OPS", project_type_key="business")
+
+        _, kwargs = adapter.client.create_project.call_args
+        assert kwargs["project_type_key"] == "business"
 
     @pytest.mark.asyncio
     async def test_list_projects(self, monkeypatch):

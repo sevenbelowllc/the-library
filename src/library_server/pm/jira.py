@@ -220,6 +220,7 @@ class JiraAdapter(PMAdapter):
         description: str = "",
         lead_account_id: str = "",
         workflow_scheme: str = "",
+        project_type_key: str = "software",
     ) -> ProjectResult:
         if not lead_account_id:
             me = await self.client.get_myself()
@@ -229,6 +230,7 @@ class JiraAdapter(PMAdapter):
             key=key,
             description=description,
             lead_account_id=lead_account_id,
+            project_type_key=project_type_key,
         )
         
         project_id = str(result.get("id", ""))

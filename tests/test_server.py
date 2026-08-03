@@ -22,6 +22,7 @@ from library_server.server import (
     library_vault_ingest,
     library_pm_create_task,
     library_pm_create_epic,
+    library_pm_create_project,
     library_pm_sync,
     library_pm_update,
     library_pm_query,
@@ -317,6 +318,23 @@ class TestPMTools:
         with patch("library_server.server._get_pm_adapter", return_value=mock_adapter):
             await library_pm_query("PROJ")
             mock_adapter.query_tasks.assert_called_once_with("PROJ", None)
+
+    @pytest.mark.asyncio
+    async def test_pm_create_project_forwards_project_type_key(self, monkeypatch):
+        """library_pm_create_project should forward project_type_key to the adapter."""
+        adapter = AsyncMock()
+        adapter.create_project = AsyncMock(
+            return_value=MagicMock(project_key="OPS", name="Ops", url="")
+        )
+
+        # Mock get_config to avoid needing a real config file
+        mock_cfg = _make_config_mock()
+        with patch("library_server.server.get_config", return_value=mock_cfg):
+            with patch("library_server.server._get_pm_adapter", return_value=adapter):
+                await library_pm_create_project(name="Ops", key="OPS", project_type_key="business")
+
+        _, kwargs = adapter.create_project.call_args
+        assert kwargs["project_type_key"] == "business"
 
 
 # --- _get_pm_adapter factory ---
