@@ -411,7 +411,9 @@ class TestPMTools:
 
 class TestGetPMAdapter:
 
-    def test_jira_adapter(self):
+    def test_jira_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         mock_cfg = _make_config_mock({"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}})
         with patch("library_server.server.get_config", return_value=mock_cfg):
             adapter = _get_pm_adapter()
@@ -763,7 +765,9 @@ class TestPMAdapterCache:
     """The long-lived server must reuse one adapter (and its HTTP connection
     pool) across tool calls, rebuilding only when pm config changes."""
 
-    def test_same_config_returns_same_adapter(self):
+    def test_same_config_returns_same_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         section = {"pm": {"provider": "jira", "site_url": "https://test.atlassian.net"}}
         with patch("library_server.server.get_config", return_value=_make_config_mock(section)):
             first = _get_pm_adapter()
@@ -771,7 +775,9 @@ class TestPMAdapterCache:
             second = _get_pm_adapter()
         assert second is first
 
-    def test_changed_config_returns_new_adapter(self):
+    def test_changed_config_returns_new_adapter(self, monkeypatch):
+        monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+        monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
         with patch(
             "library_server.server.get_config",
             return_value=_make_config_mock(
