@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from library_server.pm.adf import adf_to_text
 from library_server.pm.jira_client import JiraClient
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.output import OutputWriter
@@ -114,7 +115,11 @@ class JiraExtractor(BaseExtractor):
                         key = issue.get("key", "UNKNOWN")
                         fields = issue.get("fields", {})
                         summary = fields.get("summary", "Untitled")
-                        description = fields.get("description") or "No description."
+                        raw_description = fields.get("description")
+                        if isinstance(raw_description, dict):
+                            description = adf_to_text(raw_description).rstrip("\n") or "No description."
+                        else:
+                            description = raw_description or "No description."
                         issue_type = fields.get("issuetype", {}).get("name", "Task")
                         status_name = fields.get("status", {}).get("name", "Unknown")
                         status_lower = status_name.lower()
@@ -147,7 +152,7 @@ class JiraExtractor(BaseExtractor):
                         if comments:
                             body_parts.extend(["", "## Comments", ""])
                             for c in comments:
-                                body_parts.append(f"- {c.get('body', '')}")
+                                body_parts.append(f"- {adf_to_text(c.get('body', '')).rstrip(chr(10))}")
 
                         tags = ["source/jira", trust_tag, status_tag]
 
