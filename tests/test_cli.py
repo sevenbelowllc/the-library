@@ -343,7 +343,8 @@ class TestCmdValidate:
 
 
 class TestCmdDoctor:
-    def test_fixes_missing_dirs(self, tmp_path: Path, capsys):
+    def test_fixes_missing_dirs(self, monkeypatch, tmp_path: Path, capsys):
+        monkeypatch.chdir(tmp_path)
         with patch("library_server.cli.Path.home", return_value=tmp_path):
             _cmd_doctor()
 
@@ -353,7 +354,8 @@ class TestCmdDoctor:
         assert (tmp_path / ".library" / "vault" / "transcripts").is_dir()
         assert (tmp_path / ".library" / "vault" / "sessions").is_dir()
 
-    def test_no_fixes_needed(self, tmp_path: Path, capsys):
+    def test_no_fixes_needed(self, monkeypatch, tmp_path: Path, capsys):
+        monkeypatch.chdir(tmp_path)
         # Pre-create everything
         base = tmp_path / ".library"
         for d in ["sessions", "state", "vault/transcripts", "vault/sessions"]:
@@ -363,6 +365,11 @@ class TestCmdDoctor:
         (base / "routing.jsonl").touch()
 
         with patch("library_server.cli.Path.home", return_value=tmp_path):
+            # First run installs hooks + wrapper scripts (fresh cwd has no
+            # .claude/); run once to reach the fully-healthy state, then
+            # assert the second run reports no issues.
+            _cmd_doctor()
+            capsys.readouterr()
             _cmd_doctor()
 
         captured = capsys.readouterr()
