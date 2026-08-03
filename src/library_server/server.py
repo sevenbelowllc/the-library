@@ -271,7 +271,11 @@ async def library_pm_create_project(
     actual_scheme = workflow_scheme if workflow_scheme else default_scheme
 
     adapter = _get_pm_adapter()
-    result = await adapter.create_project(name, key, description, workflow_scheme=actual_scheme)
+    result = await adapter.create_project(
+        name, key, description,
+        workflow_scheme=actual_scheme,
+        project_type_key=project_type_key,
+    )
     return {"project_key": result.project_key, "name": result.name, "url": result.url}
 
 

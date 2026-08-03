@@ -251,6 +251,7 @@ class LinearAdapter(PMAdapter):
         description: str = "",
         lead_account_id: str = "",
         workflow_scheme: str = "",
+        project_type_key: str = "software",
     ) -> ProjectResult:
         raise NotImplementedError("Not supported by Linear adapter")
 
