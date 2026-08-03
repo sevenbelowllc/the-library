@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from library_server.pm.adf import adf_to_text as _adf_to_text
 from library_server.pm.adapter import PMAdapter, TransitionNotAvailableError
 from library_server.pm.jira_client import JiraClient
 from library_server.types import (
@@ -318,25 +319,6 @@ def _parse_issue(data: dict, project_key: str) -> TaskResult:
         labels=fields.get("labels", []),
         url=data.get("self", ""),
     )
-
-
-def _adf_to_text(node: dict | str | None) -> str:
-    """Flatten Atlassian Document Format to plain text. Tolerates str input."""
-    if node is None:
-        return ""
-    if isinstance(node, str):
-        return node
-    if not isinstance(node, dict):
-        return ""
-    if node.get("type") == "text":
-        return node.get("text", "")
-    parts: list[str] = []
-    for child in node.get("content", []) or []:
-        parts.append(_adf_to_text(child))
-    text = "".join(parts)
-    if node.get("type") in ("paragraph", "heading"):
-        return text + "\n"
-    return text
 
 
 def _parse_issue_detail(data: dict, transitions_data: dict) -> IssueDetail:

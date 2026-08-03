@@ -205,3 +205,39 @@ async def test_preview_handles_fetch_error(jira_extractor):
     with patch.object(jira_extractor, "_fetch_issues", new_callable=AsyncMock, side_effect=Exception("Network error")):
         result = await jira_extractor.preview()
     assert result.files_to_create == []
+
+
+async def test_extract_renders_adf_description_as_text(monkeypatch, output_dir: Path):
+    """Regression: ADF dict descriptions were str()-dumped as Python reprs."""
+    monkeypatch.setenv("JIRA_API_TOKEN", "test-token")
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "test@example.com")
+    from library_server.vault_builder.extractors.jira import JiraExtractor
+
+    issue = {
+        "key": "ADF-1",
+        "fields": {
+            "summary": "ADF issue",
+            "description": {
+                "type": "doc", "version": 1,
+                "content": [{"type": "paragraph",
+                             "content": [{"type": "text", "text": "Rich body"}]}],
+            },
+            "issuetype": {"name": "Task"},
+            "status": {"name": "Done"},
+            "assignee": None,
+            "labels": [],
+            "issuelinks": [],
+            "comment": {"comments": []},
+        },
+    }
+    extractor = JiraExtractor(config={
+        "enabled": True, "instance": "sevenbelow.atlassian.net",
+        "cloud_id": "test-cloud-id", "projects": ["ADF"], "auth": "api_token",
+    })
+    with patch.object(extractor, "_fetch_issues", new_callable=AsyncMock, return_value=[issue]):
+        result = await extractor.extract(output_dir / "jira")
+
+    assert result.success
+    written = (output_dir / "jira" / "ADF" / "ADF-1.md").read_text()
+    assert "Rich body" in written
+    assert "'type': 'doc'" not in written  # no Python-repr blob
