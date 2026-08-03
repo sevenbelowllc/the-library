@@ -21,6 +21,11 @@ Out of scope, each deferred to its own future push:
 - Linear adapter parity (the 7–8 `NotImplementedError` methods, real status
   transitions, query filtering).
 - Vault-builder incrementality (per-file skip, stale-file cleanup, `preserve`).
+- Graphify 0.9 upgrade + axon retirement — see
+  `2026-08-02-graphify-code-extractor-design.md`. Decision made 2026-08-02: the
+  `axon_bridge` extractor is replaced by a graphify-powered code extractor in the
+  push immediately following this one. Consequently this pass leaves `axon_bridge`
+  untouched (no health-check fix, no `command` override wiring — both moot).
 - Git-history scrub of the leaked checkpoint files (`git filter-repo`/BFG) — operator
   runs this; it rewrites shared history on a public repo.
 
@@ -123,9 +128,9 @@ Built-but-unwired code either gets a production caller or is removed.
     failed `ExtractResult`; already-running extractors finish and are reported.
   - `preserve`: removed from `VaultBuilderConfig` and docs (meaningless without
     incremental builds; revisit in the incrementality push).
-  - Axon `command` override: `validate_vault_builder_config`'s configured command is
-    passed into `AxonBridgeExtractor` and used for all subprocess calls instead of
-    the hardcoded `"axon"`.
+  - Axon `command` override: NOT wired — `axon_bridge` is being retired in the
+    follow-up push (see Out of scope); the `axon:` config block and its doc claims
+    are left as-is for that push to remove wholesale.
   - Jira `cloud_id` / `auth: mcp` doc claims: removed (feature does not exist; auth
     is env-var based).
   - Graphify `flags` / `auto_rebuild` / `incremental` doc claims: removed.
