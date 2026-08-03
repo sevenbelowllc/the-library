@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 
 from library_server.vault_builder.extractors.base import BaseExtractor
 from library_server.vault_builder.types import SurveyResult, PreviewResult, ExtractResult
@@ -505,3 +507,96 @@ async def test_survey_includes_structure_summary_as_detail(tmp_path: Path):
 
     surveys = await orch.survey()
     assert surveys[0]["detail"] == "5 repos: compliance-core, compliance-ui"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency controls: parallel / max_parallel_extractors / fail_fast
+# ---------------------------------------------------------------------------
+
+class _CountingExtractor(BaseExtractor):
+    """Records max concurrent extract() calls via a shared tracker dict."""
+    def __init__(self, name, tracker, delay=0.02, fail=False):
+        super().__init__(config={"enabled": True})
+        self.name = name
+        self.output_subdir = name
+        self._tracker = tracker
+        self._delay = delay
+        self._fail = fail
+
+    def validate_config(self):
+        return []
+
+    async def survey(self):
+        raise NotImplementedError
+
+    async def preview(self):
+        raise NotImplementedError
+
+    async def extract(self, output_dir):
+        self._tracker["running"] += 1
+        self._tracker["max"] = max(self._tracker["max"], self._tracker["running"])
+        await asyncio.sleep(self._delay)
+        self._tracker["running"] -= 1
+        if self._fail:
+            return ExtractResult(source_name=self.name, errors=["boom"], success=False)
+        return ExtractResult(source_name=self.name, files_written=["f.md"], success=True)
+
+
+@pytest.mark.asyncio
+async def test_max_parallel_extractors_limits_concurrency(tmp_path):
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    tracker = {"running": 0, "max": 0}
+    registry = PluginRegistry()
+    for i in range(4):
+        registry.register(_CountingExtractor(f"e{i}", tracker))
+    orch = VaultBuildOrchestrator(
+        registry=registry, graphify_runner=GraphifyRunner(config={}),
+        output_vault=tmp_path, mode="enrich",
+        parallel=True, max_parallel_extractors=2,
+    )
+    await orch.build()
+    assert tracker["max"] <= 2
+
+
+@pytest.mark.asyncio
+async def test_parallel_false_runs_sequentially(tmp_path):
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    tracker = {"running": 0, "max": 0}
+    registry = PluginRegistry()
+    for i in range(3):
+        registry.register(_CountingExtractor(f"e{i}", tracker))
+    orch = VaultBuildOrchestrator(
+        registry=registry, graphify_runner=GraphifyRunner(config={}),
+        output_vault=tmp_path, mode="enrich",
+        parallel=False,
+    )
+    await orch.build()
+    assert tracker["max"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fail_fast_skips_undispatched_extractors(tmp_path):
+    from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
+    from library_server.vault_builder.registry import PluginRegistry
+    from library_server.vault_builder.graphify_runner import GraphifyRunner
+
+    tracker = {"running": 0, "max": 0}
+    registry = PluginRegistry()
+    registry.register(_CountingExtractor("failer", tracker, fail=True))
+    for i in range(3):
+        registry.register(_CountingExtractor(f"e{i}", tracker))
+    orch = VaultBuildOrchestrator(
+        registry=registry, graphify_runner=GraphifyRunner(config={}),
+        output_vault=tmp_path, mode="enrich",
+        parallel=False, fail_fast=True,  # sequential => deterministic ordering
+    )
+    result = await orch.build()
+    skipped = [r for r in result.extract_results if r.errors and "Skipped: fail_fast" in r.errors[0]]
+    assert len(skipped) == 3
+    assert result.status in ("failed", "completed_with_warnings")

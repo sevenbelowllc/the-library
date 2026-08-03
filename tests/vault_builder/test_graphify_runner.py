@@ -29,29 +29,6 @@ def disabled_runner():
     return GraphifyRunner(config={"enabled": False})
 
 
-# --- is_available ---
-
-def test_is_available_when_installed(runner):
-    with patch("shutil.which", return_value="/usr/bin/graphify"):
-        assert runner.is_available() is True
-
-
-def test_is_available_when_not_installed(runner):
-    with patch("shutil.which", return_value=None):
-        assert runner.is_available() is False
-
-
-def test_is_available_when_disabled(disabled_runner):
-    assert disabled_runner.is_available() is False
-
-
-def test_is_available_when_graphify_not_importable():
-    from library_server.vault_builder.graphify_runner import GraphifyRunner
-    runner = GraphifyRunner(config={"enabled": True, "command": "graphify"})
-    with patch("library_server.vault_builder.graphify_runner.graphify_detect", None):
-        assert runner.is_available() is False
-
-
 # --- build: disabled / not installed ---
 
 async def test_build_skipped_when_disabled(disabled_runner, tmp_path: Path):

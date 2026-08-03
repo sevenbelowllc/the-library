@@ -21,7 +21,6 @@ class VaultBuilderConfig:
     sources: dict[str, dict[str, Any]] = field(default_factory=dict)
     graphify: dict[str, Any] = field(default_factory=dict)
     axon: dict[str, Any] = field(default_factory=dict)
-    preserve: list[str] = field(default_factory=list)
 
 
 def load_vault_builder_config(config_path: Path) -> VaultBuilderConfig:
@@ -46,7 +45,6 @@ def load_vault_builder_config(config_path: Path) -> VaultBuilderConfig:
         sources=vb.get("sources", {}),
         graphify=vb.get("graphify", {}),
         axon=vb.get("axon", {}),
-        preserve=vb.get("preserve", []),
     )
 
 
