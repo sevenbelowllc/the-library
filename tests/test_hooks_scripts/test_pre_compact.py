@@ -181,3 +181,34 @@ class TestMain:
             exec(compile("if __name__ == '__main__': main()", mod.__file__, "exec"),
                  {"__name__": "__main__", "main": mock_main})
             mock_main.assert_called_once()
+
+
+class TestPreCompactRedaction:
+    def test_archived_transcript_is_redacted(self, tmp_path):
+        from library_server.hooks.scripts.pre_compact import process_pre_compact
+
+        transcript = tmp_path / "transcript.jsonl"
+        # Assembled at runtime so no secret-shaped literal exists in the repo
+        # (gitleaks pre-commit); redact() still sees a real-shaped token.
+        secret = "ATATT3" + "xFfGF0" + "a" * 50
+        transcript.write_text(
+            json.dumps({"role": "user", "content": f"my token is {secret}"}) + "\n"
+            + json.dumps({"role": "assistant", "content": "ok"}) + "\n"
+        )
+        dest_dir = tmp_path / "vault" / "transcripts"
+
+        result = process_pre_compact(
+            transcript_path=transcript,
+            vault_transcripts_dir=dest_dir,
+            sessions_dir=tmp_path,
+            session_id="s1",
+        )
+
+        assert result["saved"] is True
+        archived = Path(result["archive_path"]).read_text()
+        assert secret not in archived
+        assert "[REDACTED" in archived  # Matches [REDACTED], [REDACTED_*], etc.
+        # Structure preserved: still one JSON object per line
+        lines = [ln for ln in archived.splitlines() if ln.strip()]
+        assert len(lines) == 2
+        json.loads(lines[0])
