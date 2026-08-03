@@ -61,7 +61,7 @@ The Linear adapter uses the Linear GraphQL API and follows the same interface, w
 |------|-----------|-------------|
 | `library_pm_create_task` | `project_key`, `summary`, `description?`, `labels?` | Create a task/story/bug |
 | `library_pm_create_epic` | `project_key`, `name`, `description?` | Create an epic |
-| `library_pm_update` | `task_id`, `status=""`, `comment=""` | Update a task's status and/or add a comment. If `status` doesn't match an available transition, returns a structured `{"error": "transition_not_available", task_id, current_status, requested_status, available_transitions}` error instead of silently no-opping |
+| `library_pm_update` | `task_id`, `status=""`, `comment=""` | Update a task's status and/or add a comment. If `status` doesn't match an available transition, returns a structured `{"error": "transition_not_available", task_id, requested_status, current_status, available_transitions, message}` error instead of silently no-opping |
 | `library_pm_get_issue` | `task_id` | Fetch full issue detail: fields, comments (up to 20 most recent), available transitions |
 | `library_pm_query` | `jql?`, `project_key?`, `status?` | Search issues |
 | `library_pm_sync` | (none) | Pull PM state into SESSION.md |
