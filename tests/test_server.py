@@ -384,7 +384,11 @@ class TestGraphTools:
 
 class TestMemoryHealthTools:
 
-    def test_memory_health_no_journal(self, tmp_path):
+    def test_memory_health_no_journal(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         config = {
             "vault": {"path": str(tmp_path / "vault")},
             "memory": {"session_dir": str(tmp_path / "sessions")},
@@ -394,7 +398,11 @@ class TestMemoryHealthTools:
             assert result["status"] == "healthy"
             assert result["vault_file_count"] == 0
 
-    def test_memory_health_with_vault(self, tmp_path):
+    def test_memory_health_with_vault(self, monkeypatch, tmp_path):
+        from pathlib import Path
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.chdir(tmp_path)
+
         vault = tmp_path / "vault"
         domains = vault / "domains"
         decisions = vault / "decisions"
