@@ -156,6 +156,30 @@ class TestCheckpointTools:
             library_checkpoint_list("/custom/path")
             mock_list.assert_called_once_with("/custom/path")
 
+    def test_checkpoint_write_renders_changes_decisions_memory(self, monkeypatch, tmp_path):
+        rr = tmp_path / "rr"
+        (rr / "checkpoints").mkdir(parents=True)
+        monkeypatch.setattr(
+            "library_server.server.resolve_checkpoint_dir", lambda cfg: rr / "checkpoints"
+        )
+
+        result = library_checkpoint_write(
+            topic="pipeline",
+            status="in progress",
+            next_session="continue",
+            changes="Added retry logic; Removed dead code",
+            open_decisions="Use Redis?|redis,memcached|caching layer",
+            memory_updates="auth-notes.md|project|JWT rotation policy",
+        )
+
+        content = Path(result["path"]).read_text()
+        assert "## 2. What Changed" in content
+        assert "Added retry logic" in content
+        assert "## 4. Open Decisions" in content
+        assert "Use Redis?" in content
+        assert "## 6. Memory Updates" in content
+        assert "auth-notes.md" in content
+
 
 # --- Memory tools ---
 
