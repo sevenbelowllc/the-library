@@ -524,56 +524,39 @@ def _ensure_runtime_dirs() -> bool:
 
 
 def _create_session_md(path: Path) -> None:
-    """Create a fresh SESSION.md."""
+    """Create a fresh SESSION.md via the canonical renderer (round-trip safe)."""
+    from library_server.state.session_state import render_session_state
+    from library_server.types import SessionStateData
+
     path.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    content = f"""---
-session_id: init
-started: {now}
-project: ""
----
-
-## Current
-- task: Initial setup
-- doing: Library initialization
-- branch: main
-- turns: 0
-
-## Decisions
-(none yet)
-
-## Files Touched
-(none yet)
-
-## Domains Loaded
-(none yet)
-
-## Resume Instructions
-Fresh session — The Library has been initialized. Run library:config for interactive setup.
-"""
-    path.write_text(content, encoding="utf-8")
+    data = SessionStateData(
+        session_id="init",
+        task="Initial setup",
+        doing="Library initialization",
+        branch="main",
+        resume_instructions=[
+            "Fresh session — The Library has been initialized. "
+            "Run library:config for interactive setup."
+        ],
+        started=now,
+        last_updated=now,
+    )
+    path.write_text(render_session_state(data), encoding="utf-8")
 
 
 def _create_project_state(path: Path, project_name: str) -> None:
-    """Create a starter PROJECT-STATE.md."""
+    """Create a starter PROJECT-STATE.md via the canonical renderer (round-trip safe)."""
+    from library_server.state.project_state import render_project_state
+    from library_server.types import ProjectStateData
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    content = f"""---
-library_version: "{__version__}"
-updated: {now}
-session_count: 0
----
-
-## Active
-- Project: {project_name}
-- Focus: Initial setup
-- Active task: Run library:config for interactive configuration
-- Blockers: none
-
-## PM Projects
-(none configured — run library:config pm to set up)
-"""
-    path.write_text(content, encoding="utf-8")
+    data = ProjectStateData(
+        project=project_name,
+        focus="Initial setup",
+        active_task="Run library:config for interactive configuration",
+    )
+    path.write_text(render_project_state(data), encoding="utf-8")
 
 
 def _install_hooks(settings_path: Path, project_dir: Path) -> bool:
