@@ -168,14 +168,9 @@ vault_builder:
   sources:
     jira:
       enabled: true
-      instance: your-instance.atlassian.net
-      cloud_id: your-cloud-id-here          # from Atlassian admin console
+      instance: your-instance.atlassian.net   # auth via ATLASSIAN_EMAIL + JIRA_API_TOKEN env vars
       projects: [PROJ, DOCS]                # project keys to ingest
-      auth: api_token                       # always api_token for Cloud
 ```
-
-The `cloud_id` is required for certain Atlassian REST APIs. Find it at:
-`https://your-instance.atlassian.net/_edge/tenant_info`
 
 The vault builder will extract issues, epics, and labels from each listed project and write them to `vault/sources/raw/jira/`.
 

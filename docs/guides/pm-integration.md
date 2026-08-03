@@ -55,13 +55,14 @@ The Linear adapter uses the Linear GraphQL API and follows the same interface, w
 | `library_pm_get_project` | `project_key` | Get project details |
 | `library_pm_update_project` | `project_key`, `name?`, `description?` | Update project name or description |
 
-### Ticket Management (5 tools)
+### Ticket Management (6 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `library_pm_create_task` | `project_key`, `summary`, `description?`, `labels?` | Create a task/story/bug |
 | `library_pm_create_epic` | `project_key`, `name`, `description?` | Create an epic |
-| `library_pm_update` | `task_id`, `fields` | Update any issue fields |
+| `library_pm_update` | `task_id`, `status=""`, `comment=""` | Update a task's status and/or add a comment. If `status` doesn't match an available transition, returns a structured `{"error": "transition_not_available", task_id, current_status, requested_status, available_transitions}` error instead of silently no-opping |
+| `library_pm_get_issue` | `task_id` | Fetch full issue detail: fields, comments (up to 20 most recent), available transitions |
 | `library_pm_query` | `jql?`, `project_key?`, `status?` | Search issues |
 | `library_pm_sync` | (none) | Pull PM state into SESSION.md |
 
@@ -72,6 +73,12 @@ The Linear adapter uses the Linear GraphQL API and follows the same interface, w
 | `library_pm_assign_task` | `task_id`, `account_id` | Assign an issue to a user |
 | `library_pm_link_issues` | `type_name`, `inward_key`, `outward_key` | Link two issues |
 | `library_pm_get_link_types` | (none) | List available link types (e.g., "blocks", "relates to") |
+
+### Workflow (Jira only, 1 tool)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `library_pm_autodetect_workflow` | `project_key` | Detect a `pm.workflow` block from a live Jira project's statuses; returns `{status: "detected", project_key, workflow: {states, in_progress, in_review, closed}}` or `{status: "error", error}` for non-Jira providers. Persist the result by editing `pm.workflow` in `library-config.yaml` |
 
 ## Configuration
 
