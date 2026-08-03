@@ -41,6 +41,8 @@ The Linear adapter uses the Linear GraphQL API and follows the same interface, w
 | Assign task to user | Yes | No |
 | Link issues | Yes | No |
 | List link types | Yes | No |
+| Get issue detail | Yes | No |
+| Autodetect workflow | Yes | No |
 
 ## MCP Tools Reference
 
