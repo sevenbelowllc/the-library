@@ -564,13 +564,25 @@ async def library_vault_builder_build(sources: str = "", force: bool = False) ->
 
 
 @mcp.tool(name="library_vault_builder_extract")
-async def library_vault_builder_extract(extractor: str, dry_run: bool = False) -> dict:
-    """Run a single extractor by name. Set dry_run=True for preview only."""
+async def library_vault_builder_extract(extractor: str, dry_run: bool = False, force: bool = False) -> dict:
+    """Run a single extractor by name. Set dry_run=True for preview only.
+
+    Applies the same create-mode safety gate as library_vault_builder_build;
+    pass force=True to overwrite an existing vault.
+    """
     orch = _get_vault_orchestrator()
     if dry_run:
         previews = await orch.preview([extractor])
         return {"mode": "preview", "sources": previews}
-    result = await orch.build([extractor])
+
+    if orch.output_vault:
+        from library_server.vault_builder.orchestrator import detect_vault_state, check_safety_gate
+        vault_state = detect_vault_state(orch.output_vault)
+        gate = check_safety_gate(orch.mode, vault_state, force)
+        if gate["blocked"]:
+            return {"status": "blocked", "message": gate["message"]}
+
+    result = await orch.build([extractor], force)
     return {
         "status": result.status,
         "extract_results": [
