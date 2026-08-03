@@ -659,6 +659,9 @@ def _get_vault_orchestrator():
         graphify_runner=graphify,
         output_vault=vb_cfg.output_vault or Path.cwd() / "vault-output",
         mode=vb_cfg.mode,
+        parallel=vb_cfg.parallel,
+        max_parallel_extractors=vb_cfg.max_parallel_extractors,
+        fail_fast=vb_cfg.fail_fast,
     )
 
 

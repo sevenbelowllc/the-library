@@ -61,11 +61,17 @@ class VaultBuildOrchestrator:
         graphify_runner: GraphifyRunner,
         output_vault: Path,
         mode: str = "create",
+        parallel: bool = True,
+        max_parallel_extractors: int = 8,
+        fail_fast: bool = False,
     ) -> None:
         self.registry = registry
         self.graphify_runner = graphify_runner
         self.output_vault = output_vault
         self.mode = mode
+        self.parallel = parallel
+        self.max_parallel_extractors = max_parallel_extractors
+        self.fail_fast = fail_fast
 
     def validate_all(self, extractors: list) -> dict[str, list[str]]:
         """Run validate_config() on each extractor. Returns {name: [errors]} for any with errors."""
@@ -103,19 +109,32 @@ class VaultBuildOrchestrator:
         # Pre-build validation gate — surface config errors before touching anything
         config_errors = self.validate_all(extractors)
 
-        # Run all extractors in parallel
-        tasks = [ext.extract(raw_dir / ext.output_subdir) for ext in extractors]
-        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Run extractors under a concurrency limit. parallel=False degrades to
+        # a limit of 1 (sequential). fail_fast skips extractors that have not
+        # started once any extractor has failed; in-flight ones finish.
+        limit = self.max_parallel_extractors if self.parallel else 1
+        semaphore = asyncio.Semaphore(max(1, limit))
+        failed_first: list[str] = []  # single-element list as a mutable flag
 
-        # Convert exceptions to ExtractResult
-        extract_results: list[ExtractResult] = []
-        for i, result in enumerate(raw_results):
-            if isinstance(result, BaseException):
-                extract_results.append(ExtractResult(
-                    source_name=extractors[i].name, errors=[str(result)], success=False,
-                ))
-            else:
-                extract_results.append(result)
+        async def _run_one(ext) -> ExtractResult:
+            async with semaphore:
+                if self.fail_fast and failed_first:
+                    return ExtractResult(
+                        source_name=ext.name,
+                        errors=[f"Skipped: fail_fast after '{failed_first[0]}' failed"],
+                        success=False,
+                    )
+                try:
+                    result = await ext.extract(raw_dir / ext.output_subdir)
+                except BaseException as exc:
+                    result = ExtractResult(source_name=ext.name, errors=[str(exc)], success=False)
+                if not result.success and not failed_first:
+                    failed_first.append(ext.name)
+                return result
+
+        extract_results = list(
+            await asyncio.gather(*[_run_one(ext) for ext in extractors])
+        )
 
         # Write build manifest
         writer = OutputWriter(base_dir=raw_dir)
@@ -123,12 +142,7 @@ class VaultBuildOrchestrator:
         writer.write_manifest(extract_results, total_duration)
 
         # Graphify quality gate — require at least one code or document source to succeed
-        any(r.success for r in extract_results)
         all_failed = all(not r.success for r in extract_results)
-        any(
-            r.success for r in extract_results
-            if r.source_name in ("axon_bridge",)
-        )
         graphify_status = "skipped"
         graphify_message = ""
 

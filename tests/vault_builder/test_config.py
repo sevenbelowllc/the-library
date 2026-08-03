@@ -117,6 +117,12 @@ def test_validate_config_graphify_not_found(tmp_path: Path):
     assert any("graphify" in e.lower() for e in errors)
 
 
+def test_preserve_key_is_gone():
+    """preserve was documented-but-inert; removed in 0.3.2 pending incrementality."""
+    from library_server.vault_builder.config import VaultBuilderConfig
+    assert not hasattr(VaultBuilderConfig(), "preserve")
+
+
 def test_validate_config_disabled_source_skips_path_check(tmp_path: Path):
     from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
     config_path = _write_config(tmp_path, {

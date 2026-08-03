@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -65,13 +64,6 @@ class GraphifyRunner:
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
-
-    def is_available(self) -> bool:
-        if not self.config.get("enabled", False):
-            return False
-        if graphify_detect is None:
-            return False
-        return shutil.which(self.config.get("command", "graphify")) is not None
 
     async def build(
         self,
