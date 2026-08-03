@@ -8,11 +8,11 @@ PROJECT-STATE.md. Emits no stdout output (zero tokens back to Claude).
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from library_server.redaction import redact, redact_exception
 from library_server.state.project_state import parse_project_state, update_project_state_field
 from library_server.state.session_state import parse_session_state
 
@@ -64,7 +64,10 @@ def process_session_end(
 
     dest_name = f"{date_prefix}-{session_id}-session.md"
     dest = vault_sessions_dir / dest_name
-    shutil.copy2(session_file, dest)
+    dest.write_text(
+        redact(session_file.read_text(encoding="utf-8", errors="replace")),
+        encoding="utf-8",
+    )
 
     # Increment session_count in PROJECT-STATE.md (if it exists)
     project_state_file = reading_room / "PROJECT-STATE.md"
@@ -75,7 +78,10 @@ def process_session_end(
                 project_state_file, "session_count", state.session_count + 1
             )
         except Exception as exc:
-            print(f"[library] session_end: failed to update PROJECT-STATE.md: {exc}", file=sys.stderr)
+            print(
+                f"[library] session_end: failed to update PROJECT-STATE.md: {redact_exception(exc)}",
+                file=sys.stderr,
+            )
 
     return {"archived": True}
 
