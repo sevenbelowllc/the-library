@@ -85,22 +85,6 @@ def test_validate_config_missing_source_path(tmp_path: Path):
     assert any("source_path" in e and "nonexistent" in e for e in errors)
 
 
-def test_validate_config_axon_not_found(tmp_path: Path):
-    from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
-    config_path = _write_config(tmp_path, {
-        "vault_builder": {
-            "mode": "create",
-            "output_vault": str(tmp_path / "output"),
-            "axon": {"enabled": True},
-            "sources": {"axon_bridge": {"enabled": True, "repos": []}},
-        }
-    })
-    cfg = load_vault_builder_config(config_path)
-    with patch("shutil.which", return_value=None):
-        errors = validate_vault_builder_config(cfg)
-    assert any("axon" in e.lower() for e in errors)
-
-
 def test_validate_config_graphify_not_found(tmp_path: Path):
     from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
     config_path = _write_config(tmp_path, {

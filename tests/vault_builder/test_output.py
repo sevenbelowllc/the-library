@@ -47,7 +47,7 @@ def test_write_file_creates_subdirectories(tmp_path: Path):
         title="Auth Middleware Community",
         source_type="code_repo",
         source_path="compliance-core",
-        extractor="axon_bridge",
+        extractor="code_repo",
         trust=1.0,
         domain="auth",
         tags=["source/code", "domain/auth"],

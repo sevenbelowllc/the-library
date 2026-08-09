@@ -574,7 +574,6 @@ class TestVaultBuilderTools:
         mock_vb_cfg.parallel = True
         mock_vb_cfg.sources = {"specs": {"path": "/tmp/specs"}}
         mock_vb_cfg.graphify = {"enabled": False}
-        mock_vb_cfg.axon = {"enabled": False}
 
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.vault_builder.config.load_vault_builder_config", return_value=mock_vb_cfg), \
@@ -599,7 +598,6 @@ class TestVaultBuilderTools:
         mock_vb_cfg.parallel = True
         mock_vb_cfg.sources = {"specs": {"path": "/tmp/specs"}}
         mock_vb_cfg.graphify = {"enabled": False}
-        mock_vb_cfg.axon = {"enabled": False}
 
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.vault_builder.config.load_vault_builder_config", return_value=mock_vb_cfg), \
