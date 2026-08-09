@@ -108,9 +108,10 @@ class CodeRepoExtractor(BaseExtractor):
             )
 
         for repo in self.config.get("repos", []):
-            repo_name = repo["name"]
-            repo_path = Path(repo["path"])
+            repo_name = repo.get("name", "<unnamed>")
             try:
+                repo_name = repo["name"]
+                repo_path = Path(repo["path"])
                 files_written.extend(
                     self._extract_repo(writer, output_dir, repo_name, repo_path, repo)
                 )
@@ -162,7 +163,7 @@ class CodeRepoExtractor(BaseExtractor):
                 "",
                 f"**Repo:** {repo_name}  ",
                 f"**Symbols:** {len(member_ids)}  ",
-                f"**Cohesion:** {cohesion.get(cid, 0.0)}  ",
+                f"**Cohesion:** {cohesion.get(cid, 0.0):.2f}  ",
                 f"**Domain:** {domain}",
                 "",
                 "## Members",
