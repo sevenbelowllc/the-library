@@ -239,6 +239,26 @@ The Jira extractor requires:
 
 The `code_repo` extractor requires the `graphify` Python package (`pip install 'the-library[graphify]'`) — no system CLI needed.
 
+### code_repo: languages and file selection
+
+`the-library[graphify]` installs `graphifyy[terraform]`. That covers, out of the box:
+
+Python, JavaScript, TypeScript, Go, Rust, Java, Kotlin, Scala, Groovy, C, C++, C#, Ruby, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Verilog, Fortran, Bash, JSON, and Terraform/HCL (`.tf`, `.tfvars`, `.hcl`).
+
+Terraform needs graphify's `terraform` extra (`tree_sitter_hcl`); the-library pins it, so a plain `graphifyy` install is not enough. Grammars that live behind graphify's other extras — SQL, Pascal, DM — are **not** installed and their files contribute nothing to the graph. A repo whose files all parse to zero symbols is reported as a per-repo error, not a silent empty summary.
+
+Graphify's file collector sweeps ~95 extensions, including documentation and config files (`.md`, `.json`, `.sh`), so pointing `path` at a repo root pulls in more than source code. Two things narrow it:
+
+- `.gitignore` is honored by default, so build outputs and vendored trees are already skipped.
+- A `.graphifyignore` at the repo root (or in any subdirectory) excludes more, using gitignore syntax. It is merged *after* `.gitignore` and can only ever exclude additional paths — it cannot re-include something `.gitignore` dropped.
+
+```gitignore
+# <repo>/.graphifyignore — keep docs and fixtures out of the code graph
+docs/
+*.md
+test/fixtures/
+```
+
 ## Output Structure
 
 After a full build, the output vault looks like this:
@@ -309,13 +329,16 @@ The presence of this manifest marks the vault as `previous_build` state, allowin
 
 ## Troubleshooting
 
-### "Graphify not installed" (code_repo extractor)
+### "Graphify is not installed"
 
-The `code_repo` extractor runs Graphify in-process — no system CLI needed. Install the optional dependency:
+There are two independent Graphify dependencies, and the same message can mean either:
 
-```bash
-pip install 'the-library[graphify]'
-```
+| Where it appears | What is missing | Fix |
+|------------------|-----------------|-----|
+| `code_repo` survey/preview/extract errors | The `graphifyy` **Python package** — the extractor imports it in-process | `pip install 'the-library[graphify]'` |
+| `library_vault_builder_config` validation errors, when `vault_builder.graphify.enabled: true` | The `graphify` **CLI binary** on `PATH` — the vault-level graph build shells out to it | `pip install graphifyy` (or set `vault_builder.graphify.command` to its full path) |
+
+Installing the extra normally satisfies both, since the `graphifyy` distribution ships the CLI. A `code_repo` build works fine with the vault-level step disabled, and vice versa.
 
 ### "output_vault contains existing content"
 
@@ -347,14 +370,6 @@ library_vault_builder_extract extractor="specs"
 ### "No frontmatter nodes found"
 
 Graphify's `build_from_vault` path requires files to have YAML frontmatter with at least a `title` field. Files starting with `_` (like the build manifest) are skipped. If all files lack frontmatter, the graph will be empty.
-
-### "Graphify is not installed"
-
-Install with the graphify extra:
-
-```bash
-pip install 'the-library[graphify]'
-```
 
 ### Stale trust scores on vault files
 

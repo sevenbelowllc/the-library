@@ -7,9 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 ## [0.4.0] - 2026-08-08
 
 ### Changed
-- **BREAKING (config):** the `axon_bridge` vault-builder source is replaced by `code_repo`, powered by graphify's in-process Python API instead of the `axon` CLI. Rename `vault_builder.sources.axon_bridge` to `sources.code_repo` in library-config.yaml (`validate` reports a targeted error for the old key). Same vault artifacts: `repos/<name>/repo-summary.md` + `repos/<name>/communities/*.md`, now with cohesion scores and ~25-language support including Terraform.
-- graphifyy dependency floor raised to 0.9.32, pinned by a real-API (unmocked) compatibility test.
+- **BREAKING (config):** the `axon_bridge` vault-builder source is replaced by `code_repo`, powered by graphify's in-process Python API instead of the `axon` CLI. Rename `vault_builder.sources.axon_bridge` to `sources.code_repo` in library-config.yaml. Leaving the old key in place is a hard error: `library_vault_builder_config` reports it, and `library_vault_builder_build`/`_extract`/`_survey`/`_preview` refuse to run and return the rename message as a structured error (`library validate` does not inspect vault-builder config). Same vault artifacts: `repos/<name>/repo-summary.md` + `repos/<name>/communities/*.md`, now with cohesion scores and ~25-language support including Terraform.
+- The `graphify` (and `all`) extra now installs `graphifyy[terraform]` — the base graphifyy package omits `tree_sitter_hcl`, so `.tf` files parsed to zero symbols without it.
+- graphifyy dependency floor raised to 0.9.32, pinned by real-API (unmocked) compatibility tests covering Python, JavaScript, and Terraform input.
 - `library_vault_builder_config` no longer returns `axon_enabled`.
+- The `code_repo` `domain` frontmatter tag is a keyword heuristic (inherited unchanged from `axon_bridge`). It drives vault frontmatter and Obsidian graph colour groups only — not MMU routing — and coarse or surprising tags on a given repo are expected.
+
+### Fixed
+- `code_repo` reported success for a repo that produced no symbols (an always-written `repo-summary.md` counted as output). A repo whose analysis yields an empty graph is now a per-repo error.
+- `code_repo` ran the synchronous graphify pipeline inline in `async extract()`, blocking the orchestrator's `asyncio.gather` and the MCP stdio event loop for the whole analysis; it now runs on a worker thread.
 
 ### Removed
 - `axon_bridge` extractor, the `vault_builder.axon` config block, and the axon CLI install prerequisite — no system CLI needed for code analysis.

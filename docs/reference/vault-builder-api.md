@@ -201,7 +201,7 @@ related:
 | Field | Type | Description |
 |-------|------|-------------|
 | `title` | string | Document title |
-| `source_type` | string | Classification: `spec`, `issue`, `memory`, `session`, `notebook`, `wiki` |
+| `source_type` | string | Classification: `code_repo`, `spec`, `issue`, `memory`, `session`, `notebook`, `wiki` |
 | `source_path` | string | Original source location |
 | `extracted_at` | ISO 8601 | UTC timestamp of extraction |
 | `extractor` | string | Name of the extractor that produced this file |
