@@ -10,6 +10,18 @@ from typing import Any
 import yaml
 
 
+class VaultBuilderConfigError(Exception):
+    """Raised when vault_builder config cannot be turned into a build.
+
+    Carries the full list of validation errors so the tool layer can return
+    them as a structured error instead of a bare failed build.
+    """
+
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        super().__init__("; ".join(errors))
+
+
 @dataclass
 class VaultBuilderConfig:
     """Parsed vault_builder configuration."""
