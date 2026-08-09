@@ -39,13 +39,13 @@ def test_full_code_pipeline_on_real_api(tiny_repo):
     assert isinstance(extraction, dict)
     assert extraction["nodes"], "extract produced no nodes"
     node = extraction["nodes"][0]
-    assert "id" in node and "label" in node
+    assert "id" in node and "label" in node and "source_file" in node
 
     graph = build_from_json(extraction, root=tiny_repo)
     assert graph.number_of_nodes() > 0
 
     communities = cluster(graph)
-    assert isinstance(communities, dict)
+    assert communities, "cluster found no communities on a connected graph"
     for cid, members in communities.items():
         assert isinstance(cid, int) and isinstance(members, list)
 
