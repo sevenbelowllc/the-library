@@ -554,7 +554,6 @@ def library_vault_builder_config(section: str = "") -> dict:
         "parallel": cfg.parallel,
         "sources": list(cfg.sources.keys()),
         "graphify_enabled": cfg.graphify.get("enabled", False),
-        "axon_enabled": cfg.axon.get("enabled", False),
         "validation_errors": errors,
         "valid": len(errors) == 0,
     }
@@ -652,7 +651,7 @@ def _get_vault_orchestrator():
     from library_server.vault_builder.extractors.notebooklm import NotebookLMExtractor
     from library_server.vault_builder.extractors.obsidian_vault import ObsidianVaultExtractor
     from library_server.vault_builder.extractors.jira import JiraExtractor
-    from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor
+    from library_server.vault_builder.extractors.code_repo import CodeRepoExtractor
 
     config = get_config()
     vb_cfg = load_vault_builder_config(config.path)
@@ -666,7 +665,7 @@ def _get_vault_orchestrator():
         "notebooklm": NotebookLMExtractor,
         "obsidian_vault": ObsidianVaultExtractor,
         "jira": JiraExtractor,
-        "axon_bridge": AxonBridgeExtractor,
+        "code_repo": CodeRepoExtractor,
     }
 
     for name, cls in extractor_map.items():

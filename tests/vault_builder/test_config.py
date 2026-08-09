@@ -123,6 +123,25 @@ def test_preserve_key_is_gone():
     assert not hasattr(VaultBuilderConfig(), "preserve")
 
 
+def test_axon_bridge_source_gets_migration_error(tmp_path):
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"axon_bridge": {"repos": [{"name": "x", "path": "."}]}},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("renamed to sources.code_repo" in e for e in errors)
+
+
+def test_axon_field_is_gone():
+    from library_server.vault_builder.config import VaultBuilderConfig
+    assert not hasattr(VaultBuilderConfig(), "axon")
+
+
 def test_validate_config_disabled_source_skips_path_check(tmp_path: Path):
     from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
     config_path = _write_config(tmp_path, {

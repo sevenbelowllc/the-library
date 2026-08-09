@@ -583,6 +583,14 @@ class TestVaultBuilderTools:
             assert result["valid"] is True
             assert result["mode"] == "full"
 
+    def test_vault_builder_config_has_no_axon_key(self, monkeypatch, tmp_path):
+        from library_server.server import library_vault_builder_config
+
+        monkeypatch.chdir(tmp_path)  # no library-config.yaml -> defaults
+        result = library_vault_builder_config()
+        assert "axon_enabled" not in result
+        assert "graphify_enabled" in result  # neighbor key still present
+
     def test_vault_builder_config_with_section(self):
         mock_cfg = _make_config_mock()
         mock_vb_cfg = MagicMock()
