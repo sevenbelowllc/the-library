@@ -130,6 +130,11 @@ class TestPreview:
         assert result.files_to_create == ["repos/myrepo/repo-summary.md"]
         assert any("extract time" in w for w in result.warnings)
 
+    async def test_preview_reports_missing_graphify(self, extractor):
+        with patch("library_server.vault_builder.extractors.code_repo.extract", None):
+            result = await extractor.preview()
+        assert any("Graphify is not installed" in w for w in result.warnings)
+
 
 class TestExtract:
     async def test_extract_writes_summary_and_communities(self, extractor, tmp_path):
@@ -198,6 +203,25 @@ class TestExtract:
             result = await extractor.extract(tmp_path / "repos")
         assert not result.success
         assert any("no supported code files" in e for e in result.errors)
+
+    async def test_empty_graph_is_a_failure_not_a_stub_summary(self, extractor, tmp_path):
+        """Files collected but zero symbols (e.g. a grammar that is not
+        installed) must fail — not write a 'Symbols: 0' summary and report
+        success."""
+        with patch.multiple(
+            "library_server.vault_builder.extractors.code_repo",
+            collect_files=lambda target, **kw: [Path("main.tf")],
+            extract=lambda paths, **kw: {"nodes": [], "edges": []},
+            build_from_json=lambda extraction, **kw: _FakeGraph({}),
+            cluster=lambda g, **kw: {},
+            label_communities_by_hub=lambda g, c: {},
+            score_all=lambda g, c: {},
+        ):
+            result = await extractor.extract(tmp_path / "repos")
+
+        assert not result.success
+        assert any("no symbols" in e for e in result.errors)
+        assert not (tmp_path / "repos" / "myrepo" / "repo-summary.md").exists()
 
     async def test_member_limit_truncation(self, extractor, tmp_path):
         member_ids = [f"m{i}.py::sym{i}" for i in range(60)]

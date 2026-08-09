@@ -7,6 +7,7 @@ through the graphify Python API (deterministic, offline, no LLM calls).
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from pathlib import Path
@@ -86,13 +87,16 @@ class CodeRepoExtractor(BaseExtractor):
     async def preview(self) -> PreviewResult:
         repos = self.config.get("repos", [])
         files = [f"repos/{r['name']}/repo-summary.md" for r in repos]
+        warnings = [
+            "Community pages (repos/<name>/communities/*.md) are computed "
+            "at extract time and are not listed in this preview."
+        ]
+        if extract is None:
+            warnings.insert(0, _GRAPHIFY_HINT)
         return PreviewResult(
             source_name=self.name,
             files_to_create=files,
-            warnings=[
-                "Community pages (repos/<name>/communities/*.md) are computed "
-                "at extract time and are not listed in this preview."
-            ],
+            warnings=warnings,
         )
 
     async def extract(self, output_dir: Path) -> ExtractResult:
@@ -112,8 +116,14 @@ class CodeRepoExtractor(BaseExtractor):
             try:
                 repo_name = repo["name"]
                 repo_path = Path(repo["path"])
+                # The graphify pipeline is synchronous and CPU-bound; running it
+                # inline would block the orchestrator's gather and the MCP stdio
+                # event loop for the whole analysis. Exceptions still propagate
+                # through to_thread, so per-repo isolation is unchanged.
                 files_written.extend(
-                    self._extract_repo(writer, output_dir, repo_name, repo_path, repo)
+                    await asyncio.to_thread(
+                        self._extract_repo, writer, output_dir, repo_name, repo_path, repo
+                    )
                 )
             except Exception as e:
                 errors.append(f"Error analyzing {repo_name}: {e}")
@@ -136,6 +146,15 @@ class CodeRepoExtractor(BaseExtractor):
 
         extraction = extract(code_files, root=repo_path)
         graph = build_from_json(extraction, root=repo_path)
+        if graph.number_of_nodes() == 0:
+            # An always-written repo-summary.md would otherwise report
+            # "Symbols: 0" as a success. Raise so the per-repo isolation in
+            # extract() records it as an error (e.g. a language whose grammar
+            # is not installed — see the [graphify] extra).
+            raise RuntimeError(
+                f"graphify extracted no symbols from {len(code_files)} file(s) under "
+                f"{repo_path} — unsupported language or missing grammar"
+            )
         communities = cluster(graph)
         labels = label_communities_by_hub(graph, communities)
         cohesion = score_all(graph, communities)
