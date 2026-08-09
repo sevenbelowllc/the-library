@@ -10,7 +10,7 @@ Seven extractors pull data from different sources:
 
 | Extractor | Source | What It Extracts | Output Subdir | Trust |
 |-----------|--------|------------------|---------------|-------|
-| `axon_bridge` | Source code repos | Architectural communities, symbols, domains via Axon CLI | `repos/` | 1.0 |
+| `code_repo` | Source code repos | Symbols, communities, cohesion via Graphify (in-process) | `repos/` | 1.0 |
 | `jira` | Jira REST API | Issues, epics, status, labels, comments, issue links | `jira/` | 0.5--0.8 |
 | `specs` | Reading Room `specs/` | Canonical spec files with domain detection | `specs/` | 1.0 |
 | `obsidian_vault` | Existing Obsidian vault | Markdown files with trust scoring and stale detection | `vault/` | 0.1--0.5 |
@@ -92,7 +92,7 @@ Build only selected extractors by passing a comma-separated list:
 
 ```
 library_vault_builder_build sources="specs"
-library_vault_builder_build sources="jira,axon_bridge"
+library_vault_builder_build sources="jira,code_repo"
 library_vault_builder_build sources="obsidian_vault,claude_memory,notebooklm"
 ```
 
@@ -124,7 +124,7 @@ Returns health status for each source (`connected`, `empty`, `degraded`, `error`
 
 ```
 library_vault_builder_preview
-library_vault_builder_preview sources="axon_bridge"
+library_vault_builder_preview sources="code_repo"
 ```
 
 **3. Build** -- Run extraction and write files. Includes a safety gate that blocks `create` mode if the output vault already contains content. Use `force=true` to override or switch to `enrich` mode.
@@ -170,16 +170,9 @@ vault_builder:
     enabled: true
     command: graphify          # Path to graphify binary
 
-  # Axon CLI settings (used by axon_bridge extractor)
-  axon:
-    enabled: true
-    command: axon
-    host_mode: false           # true = connect to running Axon server
-    host_url: http://localhost:8420
-
   # Per-source configuration
   sources:
-    axon_bridge:
+    code_repo:
       enabled: true
       repos:
         - name: compliance-core
@@ -244,7 +237,7 @@ The Jira extractor requires:
 - `JIRA_API_TOKEN` -- Atlassian API token
 - `ATLASSIAN_EMAIL` -- Email associated with the token
 
-The Axon Bridge extractor requires the `axon` CLI to be installed and available on `$PATH`.
+The `code_repo` extractor requires the `graphify` Python package (`pip install 'the-library[graphify]'`) — no system CLI needed.
 
 ## Output Structure
 
@@ -261,7 +254,7 @@ output-vault/
       compliance-core/
         repo-summary.md        # Repository overview (files, symbols, clusters)
         communities/
-          services-graphql.md  # Axon community: symbols + members
+          services-graphql.md  # Community page: symbols + members
           auth-clerk-jwt.md
       compliance-ui/
         repo-summary.md
@@ -308,7 +301,7 @@ Every build writes `raw/_build-manifest.md` with a summary table:
 |-----------|--------|---------------|----------|-------|
 | specs | success | 11 | 0.1s | -- |
 | jira | success | 47 | 3.2s | -- |
-| axon_bridge | success | 14 | 12.5s | -- |
+| code_repo | success | 14 | 12.5s | -- |
 | obsidian_vault | success | 89 | 1.1s | -- |
 ```
 
@@ -316,15 +309,13 @@ The presence of this manifest marks the vault as `previous_build` state, allowin
 
 ## Troubleshooting
 
-### "Axon CLI not found"
+### "Graphify not installed" (code_repo extractor)
 
-The `axon_bridge` extractor requires the Axon CLI. Install it:
+The `code_repo` extractor runs Graphify in-process — no system CLI needed. Install the optional dependency:
 
 ```bash
-pip install axoniq
+pip install 'the-library[graphify]'
 ```
-
-Verify with `axon --version`.
 
 ### "output_vault contains existing content"
 

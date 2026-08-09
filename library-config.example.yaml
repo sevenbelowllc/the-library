@@ -131,6 +131,6 @@ hooks:
 #     jira:
 #       instance: https://your-site.atlassian.net   # auth via ATLASSIAN_EMAIL + JIRA_API_TOKEN env vars
 #       projects: [PROJ1]
-#     axon_bridge:                      # being replaced by a graphify-based extractor (see specs/)
+#     code_repo:                       # analyzed in-process via Graphify (pip install the-library[graphify])
 #       repos:
-#         - {name: my-repo, path: ../my-repo, language: python}
+#         - {name: my-repo, path: ../my-repo, type: backend, language: python}

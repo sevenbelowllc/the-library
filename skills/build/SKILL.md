@@ -1,6 +1,6 @@
 ---
 name: library-build
-description: "Build the knowledge vault from configured sources. Runs the ETL pipeline: survey sources, preview extraction, execute parallel build, generate Graphify knowledge graph. Supports building all sources or specific ones (e.g., `library:build jira` or `library:build axon_bridge,specs`)."
+description: "Build the knowledge vault from configured sources. Runs the ETL pipeline: survey sources, preview extraction, execute parallel build, generate Graphify knowledge graph. Supports building all sources or specific ones (e.g., `library:build jira` or `library:build code_repo,specs`)."
 ---
 
 # library:build — Vault Builder ETL Pipeline
@@ -18,7 +18,7 @@ Build the knowledge vault from configured sources using the ETL pipeline.
 
 - No arguments: build all enabled sources
 - Source names (comma-separated): build specific sources only
-  - Valid sources: `specs`, `jira`, `axon_bridge`, `obsidian_vault`, `claude_memory`, `session_context`, `notebooklm`
+  - Valid sources: `specs`, `jira`, `code_repo`, `obsidian_vault`, `claude_memory`, `session_context`, `notebooklm`
 
 ## Process
 
@@ -36,9 +36,8 @@ If config is invalid or missing, stop and suggest running `library:config vault`
 
 Dispatch parallel Explore subagents to check:
 
-- Axon CLI available (if `axon_bridge` selected)
 - Jira auth working (if `jira` selected) — check `ATLASSIAN_EMAIL` and `JIRA_API_TOKEN` env vars
-- Graphify importable (if enabled in config)
+- Graphify importable (if enabled in config, or if `code_repo` selected)
 
 Report pass/fail per check. If any critical check fails, warn before proceeding.
 

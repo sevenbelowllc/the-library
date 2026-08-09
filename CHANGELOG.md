@@ -4,6 +4,16 @@ All notable changes to The Library are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-08-08
+
+### Changed
+- **BREAKING (config):** the `axon_bridge` vault-builder source is replaced by `code_repo`, powered by graphify's in-process Python API instead of the `axon` CLI. Rename `vault_builder.sources.axon_bridge` to `sources.code_repo` in library-config.yaml (`validate` reports a targeted error for the old key). Same vault artifacts: `repos/<name>/repo-summary.md` + `repos/<name>/communities/*.md`, now with cohesion scores and ~25-language support including Terraform.
+- graphifyy dependency floor raised to 0.9.32, pinned by a real-API (unmocked) compatibility test.
+- `library_vault_builder_config` no longer returns `axon_enabled`.
+
+### Removed
+- `axon_bridge` extractor, the `vault_builder.axon` config block, and the axon CLI install prerequisite — no system CLI needed for code analysis.
+
 ## [0.3.2] - 2026-08-02
 
 ### Added

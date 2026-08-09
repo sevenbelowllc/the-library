@@ -285,7 +285,7 @@ params use pipe-separated fields within each semicolon-separated entry.
 |------|------|----------|---------|-------------|
 | section | str | No | `""` | Source name to show detail for (e.g. `specs`, `jira`) |
 
-**Returns:** `dict` -- `{mode, output_vault, parallel, sources, graphify_enabled, axon_enabled, validation_errors, valid}`. Includes `source_detail` if section specified.
+**Returns:** `dict` -- `{mode, output_vault, parallel, sources, graphify_enabled, validation_errors, valid}`. Includes `source_detail` if section specified.
 
 **Used by skills:** (available for direct use)
 
