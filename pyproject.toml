@@ -28,18 +28,18 @@ dependencies = [
 [project.optional-dependencies]
 # Jira uses a direct REST v3 client (httpx + markdown-it-py, both core deps)
 # Linear uses httpx (already a core dependency)
-graphify = ["graphifyy>=0.8.0"]
+graphify = ["graphifyy>=0.9.32"]
 # `axon` is a system CLI binary (located via shutil.which); not a Python
 # dependency. The `axon` extra previously listed `axoniq>=1.0.0` which is
 # not published on PyPI and broke `pip install -e ".[dev]"` (see
 # the-library CI runs 2026-04-18). Operators provision the CLI separately.
-all = ["graphifyy>=0.8.0"]
+all = ["graphifyy>=0.9.32"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-mock>=3.12",
     "pytest-cov>=5.0",
-    "graphifyy>=0.8.0",
+    "graphifyy>=0.9.32",
     "ruff>=0.6,<0.16",
     "mypy>=1.10",
     "types-PyYAML",
