@@ -82,6 +82,10 @@ def validate_vault_builder_config(config: VaultBuilderConfig) -> list[str]:
         )
 
     for source_name, source_cfg in config.sources.items():
+        if not isinstance(source_cfg, dict):
+            if source_cfg is not None:
+                errors.append(f"Source '{source_name}' must be a mapping, got {type(source_cfg).__name__}")
+            continue
         if not source_cfg.get("enabled", True):
             continue
         source_path = source_cfg.get("source_path")

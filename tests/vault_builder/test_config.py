@@ -121,6 +121,37 @@ def test_axon_bridge_source_gets_migration_error(tmp_path):
     assert any("renamed to sources.code_repo" in e for e in errors)
 
 
+def test_null_bodied_source_does_not_crash_validation(tmp_path):
+    """`axon_bridge:` with no body is valid YAML (None), and is the shape a user
+    who half-deleted the block leaves behind. Validation must still report the
+    rename instead of raising AttributeError on None.get()."""
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"axon_bridge": None},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("renamed to sources.code_repo" in e for e in errors)
+
+
+def test_non_mapping_source_is_reported_not_raised(tmp_path):
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"specs": "enabled"},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("must be a mapping" in e for e in errors)
+
+
 def test_axon_field_is_gone():
     from library_server.vault_builder.config import VaultBuilderConfig
     assert not hasattr(VaultBuilderConfig(), "axon")
