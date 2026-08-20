@@ -236,6 +236,33 @@ class TestInstallHooks:
             f"Expected project dir {project_dir} to appear in at least one hook command"
         )
 
+    def test_install_hooks_collapses_home_to_tilde(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project under the user's home must be written as ~/... in every
+        command — absolute home paths leak the username into settings.json."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        project_dir = tmp_path / "workdir" / "myproject"
+        settings_path = project_dir / ".claude" / "settings.json"
+
+        install_hooks(settings_path)
+
+        content = json.loads(settings_path.read_text(encoding="utf-8"))
+        commands = [
+            h["command"]
+            for entries in content["hooks"].values()
+            for entry in entries
+            for h in entry["hooks"]
+        ]
+        commands.append(content["statusLine"]["command"])
+
+        assert commands
+        for command in commands:
+            assert str(tmp_path) not in command, (
+                f"Absolute home path leaked into command: {command}"
+            )
+            assert "~/workdir/myproject/.claude/hooks/" in command
+
     def test_install_hooks_returns_correct_hooks_count(self, tmp_path: Path) -> None:
         """Return dict should report exactly 6 hooks_count."""
         settings_path = tmp_path / ".claude" / "settings.json"
