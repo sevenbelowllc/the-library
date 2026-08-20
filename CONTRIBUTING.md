@@ -98,7 +98,7 @@ underscore-only namespace:
    ---
    ```
 2. Document: When to Use, Process, MCP Tools Used
-3. Reference MCP tools by their `library:*` names
+3. Reference MCP tools by their `library_*` underscore names
 
 ## Adding a New Extractor (Vault Builder)
 

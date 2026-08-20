@@ -128,7 +128,7 @@ library doctor
 
 See `library-config.example.yaml` for all options.
 
-## Memory Management Unit (v0.2.0)
+## Memory Management Unit
 
 The Library includes a Memory Management Unit (MMU) that prevents contextual drift across AI-assisted development sessions.
 

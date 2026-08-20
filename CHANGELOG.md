@@ -69,11 +69,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 - **Vault Builder**: parallel extraction pipeline with 7 source extractors (specs, Obsidian, Jira, Claude memory, session context, NotebookLM, Axon Bridge)
 - **Memory Management Unit (MMU)**: 6 lifecycle hooks for session continuity, domain-aware context injection, keyword auto-learning
 - **Claude Code plugin packaging**: marketplace.json, plugin.json for `claude plugins install`
-- **Unified naming**: all MCP tools use `library:<module>:<action>` convention
+- **Unified naming**: all MCP tools use the `library_<module>_<action>` convention
 
 ### Changed
 - CLI binary renamed from `library-server` to `library`
-- MCP tool names changed from `library_x_y` to `library:x:y` (27 tools)
 - Entry point moved from `server:main` to `cli:main` (server runs as default subcommand)
 
 ### Fixed
@@ -84,8 +83,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 ## [0.2.0] - 2026-04-11
 
 ### Added
-- Memory tools: `library:memory:health`, `library:memory:learn`
-- Graph tools: `library:graph:rebuild`, `library:graph:query`, `library:graph:path`
+- Memory tools: `library_memory_health`, `library_memory_learn`
+- Graph tools: `library_graph_rebuild`, `library_graph_query`, `library_graph_path`
 - Hook scripts: session_start, prompt_scan, stop_capture, pre_compact, session_end, status_line
 - Domain seeder: auto-creates domain manifests from CLAUDE.md patterns
 - Hook installer: generates Claude Code settings.json hook configuration
@@ -103,6 +102,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions follow 
 - Configuration via `library-config.yaml`
 - 456 tests, 81% code coverage
 
+[0.4.0]: https://github.com/sevenbelowllc/the-library/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/sevenbelowllc/the-library/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/sevenbelowllc/the-library/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/sevenbelowllc/the-library/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sevenbelowllc/the-library/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sevenbelowllc/the-library/releases/tag/v0.1.0
