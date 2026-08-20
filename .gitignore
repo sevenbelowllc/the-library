@@ -40,3 +40,6 @@ vault/
 graphify-out/
 .library/
 checkpoints/
+
+# Internal process artifacts (plans/specs/handoffs) — local only, never published
+docs/superpowers/
