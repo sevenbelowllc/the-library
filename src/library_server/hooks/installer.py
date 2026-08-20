@@ -152,6 +152,21 @@ def generate_hooks_config(project_dir: str = "$CLAUDE_PROJECT_DIR") -> dict:
     return config
 
 
+def _home_relative(path: Path) -> str:
+    """Collapse a path under the user's home directory to ``~/...`` form.
+
+    Written commands must not embed ``/Users/<name>``-style absolute paths
+    (they leak the username when settings.json is shared); the shell expands
+    ``~`` when Claude Code runs the hook command. Paths outside the home
+    directory are returned unchanged.
+    """
+    try:
+        rel = path.relative_to(Path.home())
+    except ValueError:
+        return str(path)
+    return "~" if rel == Path(".") else f"~/{rel}"
+
+
 def _deploy_scripts(target_dir: Path) -> int:
     """Copy hook scripts from the package into the target directory.
 
@@ -208,7 +223,7 @@ def install_hooks(settings_path: Path) -> dict:
             existing = {}
 
     # Determine project_dir from the settings_path location (.claude/settings.json)
-    project_dir = str(settings_path.parent.parent)
+    project_dir = _home_relative(settings_path.parent.parent)
 
     hooks_config = generate_hooks_config(project_dir=project_dir)
 

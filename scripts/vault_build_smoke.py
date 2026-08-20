@@ -49,7 +49,6 @@ async def main() -> int:
             }
         },
         graphify={"enabled": True, "command": "graphify", "mode": "deep"},
-        axon={"enabled": False},
     )
 
     registry = PluginRegistry()

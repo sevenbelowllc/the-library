@@ -85,22 +85,6 @@ def test_validate_config_missing_source_path(tmp_path: Path):
     assert any("source_path" in e and "nonexistent" in e for e in errors)
 
 
-def test_validate_config_axon_not_found(tmp_path: Path):
-    from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
-    config_path = _write_config(tmp_path, {
-        "vault_builder": {
-            "mode": "create",
-            "output_vault": str(tmp_path / "output"),
-            "axon": {"enabled": True},
-            "sources": {"axon_bridge": {"enabled": True, "repos": []}},
-        }
-    })
-    cfg = load_vault_builder_config(config_path)
-    with patch("shutil.which", return_value=None):
-        errors = validate_vault_builder_config(cfg)
-    assert any("axon" in e.lower() for e in errors)
-
-
 def test_validate_config_graphify_not_found(tmp_path: Path):
     from library_server.vault_builder.config import load_vault_builder_config, validate_vault_builder_config
     config_path = _write_config(tmp_path, {
@@ -121,6 +105,56 @@ def test_preserve_key_is_gone():
     """preserve was documented-but-inert; removed in 0.3.2 pending incrementality."""
     from library_server.vault_builder.config import VaultBuilderConfig
     assert not hasattr(VaultBuilderConfig(), "preserve")
+
+
+def test_axon_bridge_source_gets_migration_error(tmp_path):
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"axon_bridge": {"repos": [{"name": "x", "path": "."}]}},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("renamed to sources.code_repo" in e for e in errors)
+
+
+def test_null_bodied_source_does_not_crash_validation(tmp_path):
+    """`axon_bridge:` with no body is valid YAML (None), and is the shape a user
+    who half-deleted the block leaves behind. Validation must still report the
+    rename instead of raising AttributeError on None.get()."""
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"axon_bridge": None},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("renamed to sources.code_repo" in e for e in errors)
+
+
+def test_non_mapping_source_is_reported_not_raised(tmp_path):
+    from library_server.vault_builder.config import (
+        VaultBuilderConfig,
+        validate_vault_builder_config,
+    )
+
+    cfg = VaultBuilderConfig(
+        mode="create", output_vault=tmp_path / "vault",
+        sources={"specs": "enabled"},
+    )
+    errors = validate_vault_builder_config(cfg)
+    assert any("must be a mapping" in e for e in errors)
+
+
+def test_axon_field_is_gone():
+    from library_server.vault_builder.config import VaultBuilderConfig
+    assert not hasattr(VaultBuilderConfig(), "axon")
 
 
 def test_validate_config_disabled_source_skips_path_check(tmp_path: Path):

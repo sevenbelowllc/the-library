@@ -19,8 +19,8 @@ from library_server.vault_builder.config import (  # noqa: E402
     load_vault_builder_config,
     validate_vault_builder_config,
 )
-from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor  # noqa: E402
 from library_server.vault_builder.extractors.claude_memory import ClaudeMemoryExtractor  # noqa: E402
+from library_server.vault_builder.extractors.code_repo import CodeRepoExtractor  # noqa: E402
 from library_server.vault_builder.extractors.jira import JiraExtractor  # noqa: E402
 from library_server.vault_builder.extractors.notebooklm import NotebookLMExtractor  # noqa: E402
 from library_server.vault_builder.extractors.obsidian_vault import ObsidianVaultExtractor  # noqa: E402
@@ -35,7 +35,7 @@ _EXTRACTOR_CLASSES = {
     "session_context": SessionContextExtractor,
     "jira": JiraExtractor,
     "notebooklm": NotebookLMExtractor,
-    "axon_bridge": AxonBridgeExtractor,
+    "code_repo": CodeRepoExtractor,
 }
 
 
@@ -58,7 +58,6 @@ async def main() -> int:
     print(f"output_vault:      {vbc.output_vault}")
     print(f"parallel:          {vbc.parallel}")
     print(f"graphify enabled:  {vbc.graphify.get('enabled')}")
-    print(f"axon enabled:      {vbc.axon.get('enabled')}")
     print()
 
     grand_total = 0

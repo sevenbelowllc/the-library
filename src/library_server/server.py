@@ -9,6 +9,7 @@ from library_server.config import load_config, resolve_checkpoint_dir, LibraryCo
 
 if TYPE_CHECKING:
     from library_server.pm.adapter import PMAdapter
+    from library_server.vault_builder.config import VaultBuilderConfigError
 
 mcp = FastMCP(
     "library",
@@ -542,6 +543,11 @@ def library_memory_learn(vault_path: str = "") -> dict:
 
 # --- Vault Builder tools ---
 
+def _vault_config_error(exc: "VaultBuilderConfigError") -> dict:
+    """Structured error for an unbuildable vault_builder config."""
+    return {"status": "error", "error": str(exc), "errors": list(exc.errors)}
+
+
 @mcp.tool(name="library_vault_builder_config")
 def library_vault_builder_config(section: str = "") -> dict:
     """Show current Vault Builder configuration and validation status."""
@@ -554,7 +560,6 @@ def library_vault_builder_config(section: str = "") -> dict:
         "parallel": cfg.parallel,
         "sources": list(cfg.sources.keys()),
         "graphify_enabled": cfg.graphify.get("enabled", False),
-        "axon_enabled": cfg.axon.get("enabled", False),
         "validation_errors": errors,
         "valid": len(errors) == 0,
     }
@@ -567,7 +572,11 @@ def library_vault_builder_config(section: str = "") -> dict:
 async def library_vault_builder_survey(sources: str = "") -> dict:
     """Survey all or specific vault builder sources. Returns file counts and health."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
-    orch = _get_vault_orchestrator()
+    from library_server.vault_builder.config import VaultBuilderConfigError
+    try:
+        orch = _get_vault_orchestrator()
+    except VaultBuilderConfigError as e:
+        return _vault_config_error(e)
     surveys = await orch.survey(source_list)
     vault_state = None
     if orch.output_vault:
@@ -580,7 +589,11 @@ async def library_vault_builder_survey(sources: str = "") -> dict:
 async def library_vault_builder_preview(sources: str = "") -> dict:
     """Dry run — show what would be extracted without writing."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
-    orch = _get_vault_orchestrator()
+    from library_server.vault_builder.config import VaultBuilderConfigError
+    try:
+        orch = _get_vault_orchestrator()
+    except VaultBuilderConfigError as e:
+        return _vault_config_error(e)
     previews = await orch.preview(source_list)
     return {"sources": previews}
 
@@ -589,7 +602,11 @@ async def library_vault_builder_preview(sources: str = "") -> dict:
 async def library_vault_builder_build(sources: str = "", force: bool = False) -> dict:
     """Full parallel extraction + Graphify build. Pass force=True to overwrite existing vault."""
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
-    orch = _get_vault_orchestrator()
+    from library_server.vault_builder.config import VaultBuilderConfigError
+    try:
+        orch = _get_vault_orchestrator()
+    except VaultBuilderConfigError as e:
+        return _vault_config_error(e)
 
     if orch.output_vault:
         from library_server.vault_builder.orchestrator import detect_vault_state, check_safety_gate
@@ -618,7 +635,11 @@ async def library_vault_builder_extract(extractor: str, dry_run: bool = False, f
     Applies the same create-mode safety gate as library_vault_builder_build;
     pass force=True to overwrite an existing vault.
     """
-    orch = _get_vault_orchestrator()
+    from library_server.vault_builder.config import VaultBuilderConfigError
+    try:
+        orch = _get_vault_orchestrator()
+    except VaultBuilderConfigError as e:
+        return _vault_config_error(e)
     if dry_run:
         previews = await orch.preview([extractor])
         return {"mode": "preview", "sources": previews}
@@ -642,7 +663,11 @@ async def library_vault_builder_extract(extractor: str, dry_run: bool = False, f
 
 def _get_vault_orchestrator():
     """Build a VaultBuildOrchestrator from config."""
-    from library_server.vault_builder.config import load_vault_builder_config
+    from library_server.vault_builder.config import (
+        VaultBuilderConfigError,
+        load_vault_builder_config,
+        validate_vault_builder_config,
+    )
     from library_server.vault_builder.registry import PluginRegistry
     from library_server.vault_builder.graphify_runner import GraphifyRunner
     from library_server.vault_builder.orchestrator import VaultBuildOrchestrator
@@ -652,7 +677,7 @@ def _get_vault_orchestrator():
     from library_server.vault_builder.extractors.notebooklm import NotebookLMExtractor
     from library_server.vault_builder.extractors.obsidian_vault import ObsidianVaultExtractor
     from library_server.vault_builder.extractors.jira import JiraExtractor
-    from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor
+    from library_server.vault_builder.extractors.code_repo import CodeRepoExtractor
 
     config = get_config()
     vb_cfg = load_vault_builder_config(config.path)
@@ -666,8 +691,22 @@ def _get_vault_orchestrator():
         "notebooklm": NotebookLMExtractor,
         "obsidian_vault": ObsidianVaultExtractor,
         "jira": JiraExtractor,
-        "axon_bridge": AxonBridgeExtractor,
+        "code_repo": CodeRepoExtractor,
     }
+
+    # A source key no extractor can serve (the retired `axon_bridge`, a typo)
+    # used to register nothing and surface as a bare status="failed". Fail
+    # loudly instead, carrying validate_vault_builder_config's targeted
+    # messages (including the axon_bridge -> code_repo rename).
+    unknown = [name for name in vb_cfg.sources if name not in extractor_map]
+    if unknown:
+        errors = validate_vault_builder_config(vb_cfg)
+        errors += [
+            f"Unknown vault_builder source: '{name}' (no extractor registered)"
+            for name in unknown
+            if not any(name in err for err in errors)
+        ]
+        raise VaultBuilderConfigError(errors)
 
     for name, cls in extractor_map.items():
         source_cfg = vb_cfg.sources.get(name, {})

@@ -201,7 +201,7 @@ related:
 | Field | Type | Description |
 |-------|------|-------------|
 | `title` | string | Document title |
-| `source_type` | string | Classification: `spec`, `issue`, `memory`, `session`, `notebook`, `wiki` |
+| `source_type` | string | Classification: `code_repo`, `spec`, `issue`, `memory`, `session`, `notebook`, `wiki` |
 | `source_path` | string | Original source location |
 | `extracted_at` | ISO 8601 | UTC timestamp of extraction |
 | `extractor` | string | Name of the extractor that produced this file |
@@ -259,7 +259,6 @@ class VaultBuilderConfig:
     fail_fast: bool = False             # Stop on first extractor failure
     sources: dict[str, dict[str, Any]]  # Per-extractor config dicts
     graphify: dict[str, Any]            # Graphify post-processing config
-    axon: dict[str, Any]                # Axon bridge config
 ```
 
 `parallel`, `max_parallel_extractors`, and `fail_fast` are enforced by
@@ -296,18 +295,18 @@ vault_builder:
       project_keys:
         - COS
         - PLT
-    axon_bridge:
+    code_repo:
       enabled: true
-      command: axon
+      repos:
+        - name: my-repo
+          path: /absolute/path/to/my-repo
+          type: backend
+          language: python
 
   graphify:
     enabled: true
     command: graphify
     mode: deep
-
-  axon:
-    enabled: false
-    command: axon
 ```
 
 ### Validation
@@ -316,8 +315,8 @@ vault_builder:
 
 - `mode` is `"create"` or `"enrich"`
 - `output_vault` is set and its parent directory exists
-- If Axon is enabled, its CLI binary is on `$PATH`
 - If Graphify is enabled, its CLI binary is on `$PATH`
+- A renamed/removed source key under `sources` is rejected with a targeted migration error (see CHANGELOG)
 - For each enabled source, `source_path` exists (if specified)
 
 ---
@@ -334,7 +333,7 @@ Registered in `server.py::_get_vault_orchestrator`:
 | `notebooklm` | `NotebookLMExtractor` | `notebooklm` | Google NotebookLM exports |
 | `obsidian_vault` | `ObsidianVaultExtractor` | `obsidian_vault` | Obsidian vault Markdown files |
 | `jira` | `JiraExtractor` | `jira` | Jira issues via REST API |
-| `axon_bridge` | `AxonBridgeExtractor` | `axon_bridge` | Axon CLI knowledge bridge |
+| `code_repo` | `CodeRepoExtractor` | `repos` | Graphify code analysis |
 
 ---
 

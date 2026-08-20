@@ -19,8 +19,8 @@ from library_server.vault_builder.config import (  # noqa: E402
     load_vault_builder_config,
     validate_vault_builder_config,
 )
-from library_server.vault_builder.extractors.axon_bridge import AxonBridgeExtractor  # noqa: E402
 from library_server.vault_builder.extractors.claude_memory import ClaudeMemoryExtractor  # noqa: E402
+from library_server.vault_builder.extractors.code_repo import CodeRepoExtractor  # noqa: E402
 from library_server.vault_builder.extractors.jira import JiraExtractor  # noqa: E402
 from library_server.vault_builder.extractors.notebooklm import NotebookLMExtractor  # noqa: E402
 from library_server.vault_builder.extractors.obsidian_vault import ObsidianVaultExtractor  # noqa: E402
@@ -42,7 +42,7 @@ _EXTRACTOR_MAP = {
     "notebooklm": NotebookLMExtractor,
     "obsidian_vault": ObsidianVaultExtractor,
     "jira": JiraExtractor,
-    "axon_bridge": AxonBridgeExtractor,
+    "code_repo": CodeRepoExtractor,
 }
 
 

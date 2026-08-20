@@ -251,7 +251,7 @@ library_vault_builder_preview
 library_vault_builder_build
 ```
 
-Orchestrates all registered extractors (specs, claude_memory, session_context, notebooklm, obsidian_vault, jira, axon_bridge) through the survey-preview-extract pipeline. Writes structured Markdown with YAML frontmatter to the vault's `raw/` directory. Optionally runs Graphify for knowledge graph generation.
+Orchestrates all registered extractors (specs, claude_memory, session_context, notebooklm, obsidian_vault, jira, code_repo) through the survey-preview-extract pipeline. Writes structured Markdown with YAML frontmatter to the vault's `raw/` directory. Optionally runs Graphify for knowledge graph generation.
 
 ---
 

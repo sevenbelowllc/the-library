@@ -10,6 +10,18 @@ from typing import Any
 import yaml
 
 
+class VaultBuilderConfigError(Exception):
+    """Raised when vault_builder config cannot be turned into a build.
+
+    Carries the full list of validation errors so the tool layer can return
+    them as a structured error instead of a bare failed build.
+    """
+
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        super().__init__("; ".join(errors))
+
+
 @dataclass
 class VaultBuilderConfig:
     """Parsed vault_builder configuration."""
@@ -20,7 +32,6 @@ class VaultBuilderConfig:
     fail_fast: bool = False
     sources: dict[str, dict[str, Any]] = field(default_factory=dict)
     graphify: dict[str, Any] = field(default_factory=dict)
-    axon: dict[str, Any] = field(default_factory=dict)
 
 
 def load_vault_builder_config(config_path: Path) -> VaultBuilderConfig:
@@ -44,7 +55,6 @@ def load_vault_builder_config(config_path: Path) -> VaultBuilderConfig:
         fail_fast=vb.get("fail_fast", False),
         sources=vb.get("sources", {}),
         graphify=vb.get("graphify", {}),
-        axon=vb.get("axon", {}),
     )
 
 
@@ -60,17 +70,22 @@ def validate_vault_builder_config(config: VaultBuilderConfig) -> list[str]:
     elif config.output_vault and not config.output_vault.parent.exists():
         errors.append(f"output_vault parent directory does not exist: {config.output_vault.parent}")
 
-    if config.axon.get("enabled"):
-        axon_cmd = config.axon.get("command", "axon")
-        if not shutil.which(axon_cmd):
-            errors.append(f"Axon is enabled but CLI not found: {axon_cmd}. Install with: pip install axoniq")
-
     if config.graphify.get("enabled"):
         graphify_cmd = config.graphify.get("command", "graphify")
         if not shutil.which(graphify_cmd):
             errors.append(f"Graphify is enabled but CLI not found: {graphify_cmd}. Install with: pip install graphifyy")
 
+    if "axon_bridge" in config.sources:
+        errors.append(
+            "sources.axon_bridge was renamed to sources.code_repo "
+            "(axon retired in favor of graphify) — update library-config.yaml"
+        )
+
     for source_name, source_cfg in config.sources.items():
+        if not isinstance(source_cfg, dict):
+            if source_cfg is not None:
+                errors.append(f"Source '{source_name}' must be a mapping, got {type(source_cfg).__name__}")
+            continue
         if not source_cfg.get("enabled", True):
             continue
         source_path = source_cfg.get("source_path")

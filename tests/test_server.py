@@ -574,7 +574,6 @@ class TestVaultBuilderTools:
         mock_vb_cfg.parallel = True
         mock_vb_cfg.sources = {"specs": {"path": "/tmp/specs"}}
         mock_vb_cfg.graphify = {"enabled": False}
-        mock_vb_cfg.axon = {"enabled": False}
 
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.vault_builder.config.load_vault_builder_config", return_value=mock_vb_cfg), \
@@ -582,6 +581,14 @@ class TestVaultBuilderTools:
             result = library_vault_builder_config()
             assert result["valid"] is True
             assert result["mode"] == "full"
+
+    def test_vault_builder_config_has_no_axon_key(self, monkeypatch, tmp_path):
+        from library_server.server import library_vault_builder_config
+
+        monkeypatch.chdir(tmp_path)  # no library-config.yaml -> defaults
+        result = library_vault_builder_config()
+        assert "axon_enabled" not in result
+        assert "graphify_enabled" in result  # neighbor key still present
 
     def test_vault_builder_config_with_section(self):
         mock_cfg = _make_config_mock()
@@ -591,7 +598,6 @@ class TestVaultBuilderTools:
         mock_vb_cfg.parallel = True
         mock_vb_cfg.sources = {"specs": {"path": "/tmp/specs"}}
         mock_vb_cfg.graphify = {"enabled": False}
-        mock_vb_cfg.axon = {"enabled": False}
 
         with patch("library_server.server.get_config", return_value=mock_cfg), \
              patch("library_server.vault_builder.config.load_vault_builder_config", return_value=mock_vb_cfg), \
@@ -757,6 +763,72 @@ class TestGetVaultOrchestrator:
             orch = _get_vault_orchestrator()
             # Should have registered the 2 configured extractors
             assert len(orch.registry._extractors) == 2
+
+
+# --- Retired-source migration error ---
+
+class TestRetiredSourceMigrationError:
+    """A config still naming the retired `axon_bridge` source must produce the
+    rename message through the build path, not a bare status='failed'."""
+
+    @pytest.fixture()
+    def axon_config_dir(self, tmp_path, monkeypatch):
+        (tmp_path / "library-config.yaml").write_text(
+            "vault_builder:\n"
+            "  mode: create\n"
+            f"  output_vault: {tmp_path / 'out'}\n"
+            "  sources:\n"
+            "    axon_bridge:\n"
+            "      enabled: true\n"
+            "      repos:\n"
+            "        - name: demo\n"
+            f"          path: {tmp_path}\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def test_factory_raises_with_rename_message(self, axon_config_dir):
+        from library_server.vault_builder.config import VaultBuilderConfigError
+
+        with pytest.raises(VaultBuilderConfigError) as exc:
+            _get_vault_orchestrator()
+        assert any("renamed to sources.code_repo" in e for e in exc.value.errors)
+
+    @pytest.mark.asyncio
+    async def test_build_returns_structured_error(self, axon_config_dir):
+        result = await library_vault_builder_build()
+        assert result["status"] == "error"
+        assert "renamed to sources.code_repo" in result["error"]
+        assert any("renamed to sources.code_repo" in e for e in result["errors"])
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda: library_vault_builder_survey(),
+            lambda: library_vault_builder_preview(),
+            lambda: library_vault_builder_extract("code_repo"),
+        ],
+    )
+    async def test_every_orchestrator_tool_surfaces_it(self, axon_config_dir, call):
+        result = await call()
+        assert result["status"] == "error"
+        assert "renamed to sources.code_repo" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_source_gets_generic_message(self, tmp_path, monkeypatch):
+        (tmp_path / "library-config.yaml").write_text(
+            "vault_builder:\n"
+            "  mode: create\n"
+            f"  output_vault: {tmp_path / 'out'}\n"
+            "  sources:\n"
+            "    speks:\n"
+            "      enabled: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        result = await library_vault_builder_build()
+        assert result["status"] == "error"
+        assert any("Unknown vault_builder source: 'speks'" in e for e in result["errors"])
 
 
 # --- _get_pm_adapter caching ---

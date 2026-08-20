@@ -1,6 +1,6 @@
 # Jira API Reference
 
-Reference documentation for The Library's `JiraClient` — the direct REST API integration layer introduced in v0.4.0.
+Reference documentation for The Library's `JiraClient` — the direct REST API integration layer introduced in v0.3.0.
 
 ## Authentication
 
